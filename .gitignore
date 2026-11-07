@@ -1,0 +1,20 @@
+node_modules/
+dist/
+build/
+coverage/
+.turbo/
+*.tsbuildinfo
+*.log
+lab-results/
+
+# Secrets and private material (this repository is public)
+.env
+.env.*
+!.env.example
+.secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+.scratch/
+internal_hidden_docs/

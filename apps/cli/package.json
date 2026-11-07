@@ -1,0 +1,26 @@
+{
+  "name": "@aiengineer/service-cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "aieng": "./dist/main.js"
+  },
+  "scripts": {
+    "build": "tsup src/main.ts --format esm --clean",
+    "dev": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aiengineer/service-client": "workspace:*",
+    "@aiengineer/service-contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsup": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

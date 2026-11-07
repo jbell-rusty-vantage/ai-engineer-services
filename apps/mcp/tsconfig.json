@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  // The MCP SDK transport types are not compatible with exactOptionalPropertyTypes (same override as knowledge-services).
+  "compilerOptions": {
+    "exactOptionalPropertyTypes": false
+  },
+  "include": ["src/**/*.ts"]
+}

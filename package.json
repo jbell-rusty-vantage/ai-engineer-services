@@ -1,0 +1,31 @@
+{
+  "name": "@aiengineer/ai-engineer-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.15.1",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "dev:api": "pnpm --filter @aiengineer/service-api dev",
+    "dev:mcp": "pnpm --filter @aiengineer/service-mcp dev",
+    "lab:prove-surfaces": "tsx --env-file-if-exists=.env scripts/lab/prove-surfaces.ts"
+  },
+  "devDependencies": {
+    "@aiengineer/service-application": "workspace:*",
+    "@aiengineer/service-client": "workspace:*",
+    "@aiengineer/service-mcp": "workspace:*",
+    "@biomejs/biome": "2.5.14",
+    "@modelcontextprotocol/sdk": "catalog:",
+    "@types/node": "catalog:",
+    "tsx": "catalog:",
+    "turbo": "catalog:",
+    "typescript": "catalog:"
+  }
+}
