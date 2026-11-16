@@ -1,4 +1,8 @@
-/** Error codes shared by the database layer, the API, the MCP server and the CLI. */
+/**
+ * Error codes shared by the database layer, the API, the MCP server and the CLI.
+ * `UNAVAILABLE` is transient (retry later). `NOT_AVAILABLE` is not: this deployment cannot answer the request until
+ * something is configured or the database contract changes, and `detail` names what is missing.
+ */
 export const productErrorCodes = [
   "AUTH_REQUIRED",
   "CLIENT_GRANT_INVALID",
@@ -16,6 +20,7 @@ export const productErrorCodes = [
   "DIGEST_MISMATCH",
   "STORAGE_OBJECT_MISSING",
   "UNAVAILABLE",
+  "NOT_AVAILABLE",
   "INTERNAL_ERROR",
 ] as const;
 
@@ -38,6 +43,7 @@ const httpStatusByCode: Readonly<Record<ProductErrorCode, number>> = {
   DIGEST_MISMATCH: 422,
   STORAGE_OBJECT_MISSING: 422,
   UNAVAILABLE: 503,
+  NOT_AVAILABLE: 501,
   INTERNAL_ERROR: 500,
 };
 

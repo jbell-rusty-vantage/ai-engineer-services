@@ -5,11 +5,6 @@ const id = z.guid();
 
 export const proposeResearch = defineTool({
   name: "propose_research",
-  title: "Propose research",
-  description:
-    "Submit a research brief revision as a proposal. The brief's metadata.research (aieng.research-brief.v1) states the " +
-    "question, plan, world window, budget_limit_usd and the outputs (obligations) the research must deliver. Returns the " +
-    "problems to fix, or valid. Only a person can accept the proposal and its budget.",
   input: z.object({
     workspace_id: id,
     revision_id: id.describe("Brief revision to propose (write it first with draft_work, kind brief)"),
@@ -30,15 +25,11 @@ const inspectTargets = {
 
 export const inspectResearch = defineTool({
   name: "inspect_research",
-  title: "Inspect research",
-  description:
-    "Read research state. acceptance: obligations, deliveries and whether they are fulfilled. dataset: a fixed revision " +
-    "(or the draft) with value statuses and support counts. statement: the evidence behind one statement (quotes, source " +
-    "URLs, stored-byte digests, calculations, decisions) or that it has none. source_usage: every statement, value, " +
-    "dataset revision, report and delivery that uses a source document.",
   input: z.object({
     workspace_id: id,
-    what: z.enum(["acceptance", "dataset", "statement", "source_usage"]),
+    what: z
+      .enum(["acceptance", "dataset", "statement", "source_usage"])
+      .describe("statement = its evidence trace; source_usage = everything that uses a source document"),
     id: id.describe("Acceptance, dataset work, statement or source document revision id"),
     revision_no: z.number().int().min(1).optional().describe("dataset only; default the latest revision"),
     draft: z.boolean().optional().describe("dataset only; read the uncommitted draft"),
@@ -80,16 +71,12 @@ const cell = z.object({
 
 export const updateDataset = defineTool({
   name: "update_dataset",
-  title: "Update a dataset",
-  description:
-    "Change a research dataset. draft: edit the working draft directly (your own dataset, before it is committed). " +
-    "proposal: propose a reviewable change to the latest fixed revision (refresh, correction, watch); a person applies it, " +
-    "an identical proposal is reported as a duplicate and a refresh with no changed values creates nothing. Every value " +
-    "carries a status: undisclosed, not_found, conflicting and not_applicable are different from unknown.",
   input: z.object({
     workspace_id: id,
     dataset_work_id: id,
-    mode: z.enum(["draft", "proposal"]),
+    mode: z
+      .enum(["draft", "proposal"])
+      .describe("draft = edit your own working draft; proposal = a reviewed change a person applies"),
     cells: z.array(cell).default([]),
     rows_add: z.array(z.object({ row_key: id.optional(), label: z.string(), entity_id: id.optional() })).optional(),
     rows_remove: z.array(id).optional(),
@@ -126,12 +113,6 @@ export const updateDataset = defineTool({
 
 export const citeEvidence = defineTool({
   name: "cite_evidence",
-  title: "Cite evidence",
-  description:
-    "Record why a statement or a dataset value says what it says: supports, contradicts or qualifies (quote exact lines " +
-    "from a stored source document), calculated_from (expression and input cells), inferred_by (a decision answer) or " +
-    "context. Contradicting evidence is kept, never replaced. Citing does not make a claim true; it records who judged " +
-    "which exact evidence.",
   input: z.object({
     workspace_id: id,
     statement_id: id.optional(),
@@ -145,7 +126,10 @@ export const citeEvidence = defineTool({
     target: z
       .object({ kind: z.enum(["cell", "decision", "claim", "assertion"]), id, answer_key: z.string().optional() })
       .optional(),
-    method: z.object({ expression: z.string(), inputs: z.array(id) }).optional(),
+    method: z
+      .object({ expression: z.string(), inputs: z.array(id) })
+      .optional()
+      .describe("calculated_from: the expression and its input cell ids"),
   }),
   run: (context, input) => {
     const subject = input.statement_id
@@ -178,10 +162,6 @@ export const citeEvidence = defineTool({
 
 export const deliverOutput = defineTool({
   name: "deliver_output",
-  title: "Deliver a research output",
-  description:
-    "Offer a dataset, report or experience revision (or a file / file set) against one obligation of accepted research. " +
-    "A person accepts or rejects it; the agent that produced it cannot accept its own delivery.",
   input: z.object({
     workspace_id: id,
     obligation_id: id,

@@ -4,7 +4,7 @@ Names only. Source: `config/env.registry.yaml`; database values: `BellLabs/.secr
 
 One database reader: `packages/application/src/config.ts` (`loadServiceConfig`, shared `requiredEnvironment`). The API and remote MCP entry points call it once, pass the result to `createProductService`, and log `describeDatabaseTarget` (plane, ref, host only). The lab scripts and the local MCP server import `requiredEnvironment` from the same module.
 
-Local runs: `pnpm dev:api`, `pnpm dev:mcp`, the `start` scripts and `pnpm lab:prove-surfaces` start Node with `--env-file-if-exists` on this repository's git-ignored `.env`; the process environment wins. Copy `.env.example`.
+Local runs: `pnpm dev:api`, `pnpm dev:mcp`, the `start` scripts, `pnpm lab:prove-surfaces` and `pnpm eval:consumer-surface` start Node with `--env-file-if-exists` on this repository's git-ignored `.env`; the process environment wins. Copy `.env.example`.
 
 ## Database (server processes)
 
@@ -22,8 +22,11 @@ Local runs: `pnpm dev:api`, `pnpm dev:mcp`, the `start` scripts and `pnpm lab:pr
 | `AIENG_API_HOST`, `AIENG_API_PORT` | `apps/api/src/index.ts` | `127.0.0.1`, `3200` |
 | `AIENG_MCP_HOST`, `AIENG_MCP_PORT` | `apps/mcp/src/remote.ts` | `127.0.0.1`, `3201` |
 | `AIENG_API_URL` | `apps/cli/src/main.ts`, `apps/mcp/src/stdio.ts`, `scripts/lab/prove-surfaces.ts` | required by the CLI and local MCP; the lab proof defaults to `http://127.0.0.1:3200` |
-| `AIENG_ACCESS_TOKEN` | `apps/cli/src/main.ts`, `apps/mcp/src/stdio.ts` | required; the calling user's own Supabase session token (secret) |
-| `AIENG_CLIENT_TOKEN` | same | optional scoped grant from `create_client_grant` (secret) |
+| `AIENG_ACCESS_TOKEN` | `apps/cli/src/main.ts`, `apps/mcp/src/stdio.ts`, `scripts/consumer-surface-eval.ts` | required by the CLI and local MCP; the calling user's own Supabase session token (secret). The consumer evaluation uses it when set, and otherwise creates a lab user (loopback `AIENG_DB_URL` only) |
+| `AIENG_CLIENT_TOKEN` | `apps/cli/src/main.ts`, `apps/mcp/src/stdio.ts` | optional scoped grant from `create_client_grant` (secret) |
+| `AIENG_SCHEMA_WORKSPACE_DIR` | API, remote MCP (`resolveSchemaWorkspaceDirectory` in `packages/application/src/schema/schema-workspace-location.ts`) | the generated schema workspace of `ai-engineer-db-contract`; unset: the sibling checkout `../ai-engineer-db-contract/workspace` when it exists, otherwise schema navigation answers `NOT_AVAILABLE` |
+
+`aieng guide` and `aieng describe` need no variable: they answer from the catalog built into the CLI.
 
 ## Lab mapping
 

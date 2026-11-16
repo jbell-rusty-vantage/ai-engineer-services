@@ -5,14 +5,11 @@ const id = z.guid();
 
 export const startAttempt = defineTool({
   name: "start_attempt",
-  title: "Start an attempt",
-  description:
-    "Start a practice or official attempt at a task with declared conditions (facet: independent, assisted or agent_directed). " +
-    "Official attempts need the enrollment, adopted release, requirement key and an approved option; a learner's own project " +
-    "or challenge also needs an approved equivalence request.",
   input: z.object({
-    purpose: z.enum(["practice", "official", "diagnostic", "retention_check", "transfer_check"]),
-    facet: z.enum(["independent", "assisted", "agent_directed"]),
+    purpose: z
+      .enum(["practice", "official", "diagnostic", "retention_check", "transfer_check"])
+      .describe("official also needs enrollment_id, adoption_id, requirement_key and option_id"),
+    facet: z.enum(["independent", "assisted", "agent_directed"]).describe("Declare honestly how the work is done"),
     assistance: z.string().optional().describe("e.g. coach, build_with_me, none"),
     task_revision_id: id.optional().describe("A task in the caller's own workspace"),
     task_release_item_id: id.optional().describe("A released course task"),
@@ -35,10 +32,6 @@ export const startAttempt = defineTool({
 
 export const submitAttempt = defineTool({
   name: "submit_attempt",
-  title: "Submit an attempt",
-  description:
-    "Freeze a submission for an attempt. Evidence items point at fixed things: a project revision, a deployment, a file set, an " +
-    "artifact, a conversation message or an external commit/URL. Later edits never change a submission.",
   input: z.object({
     attempt_id: id,
     items: z

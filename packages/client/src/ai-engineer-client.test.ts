@@ -41,6 +41,32 @@ describe("AiEngineerClient", () => {
   });
 });
 
+describe("schema navigation", () => {
+  it("searches and reads pages over HTTP, keeping a JSON key in the path", async () => {
+    const seen: { url?: string } = {};
+    const client = new AiEngineerClient({
+      baseUrl: "http://api.test",
+      accessToken: "user",
+      fetch: fakeFetch(200, { head: {}, results: [] }, seen),
+    });
+    await client.searchSchema("verified claims", { limit: 3, kind: "view" });
+    expect(seen.url).toBe("http://api.test/v1/schema/search?query=verified+claims&limit=3&kind=view");
+    await client.getSchemaPage("search/terminology.json#admission");
+    expect(seen.url).toBe("http://api.test/v1/schema/pages/search/terminology.json%23admission");
+    await client.getSchemaPage();
+    expect(seen.url).toBe("http://api.test/v1/schema/pages");
+  });
+
+  it("raises NOT_AVAILABLE from the API body", async () => {
+    const client = new AiEngineerClient({
+      baseUrl: "http://api.test",
+      accessToken: "user",
+      fetch: fakeFetch(501, { code: "NOT_AVAILABLE", message: "NOT_AVAILABLE", detail: "schema navigation" }),
+    });
+    await expect(client.searchSchema("claims")).rejects.toMatchObject({ code: "NOT_AVAILABLE" });
+  });
+});
+
 describe("mediaTypeForPath", () => {
   it("knows common site files", () => {
     expect(mediaTypeForPath("index.html")).toBe("text/html");

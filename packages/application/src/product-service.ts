@@ -5,7 +5,9 @@ import {
   assetUploadMetadata,
   type CommandInput,
   findOperation,
+  isKnowledgeOperation,
   type JsonObject,
+  type KnowledgeOperation,
   maxAssetBytes,
   type OperationDefinition,
   type OperationKind,
@@ -14,6 +16,7 @@ import {
 } from "@aiengineer/service-contracts";
 import { ArtifactCustody, sha256Hex } from "./artifact-custody.js";
 import type { DatabaseGateway } from "./database-gateway.js";
+import type { KnowledgeReader } from "./knowledge/knowledge-service.js";
 import type { ObjectStorage } from "./object-storage.js";
 import type { CallerSession } from "./session.js";
 
@@ -42,9 +45,11 @@ function parsePayload(definition: OperationDefinition, payload: JsonObject): Jso
 export class ProductService {
   private readonly custody: ArtifactCustody;
 
+  /** `knowledge` serves the knowledge reads; without it they answer `NOT_AVAILABLE`. */
   constructor(
     private readonly database: DatabaseGateway,
     storage: ObjectStorage,
+    private readonly knowledge?: KnowledgeReader,
   ) {
     this.custody = new ArtifactCustody(database, storage);
   }
@@ -64,10 +69,12 @@ export class ProductService {
 
   async runRead(session: CallerSession, operation: string, input: ReadInput): Promise<unknown> {
     const definition = publicOperation(operation, "read");
+    const payload = parsePayload(definition, input.payload);
+    if (isKnowledgeOperation(definition.name)) return this.readKnowledge(session, definition.name, payload);
     const result = await this.database.read(session, {
       workspaceId: input.workspaceId ?? null,
       operation: definition.name,
-      payload: parsePayload(definition, input.payload),
+      payload,
     });
     if (result === null) throw new ProductError("NOT_FOUND", definition.name);
     return result;
@@ -102,6 +109,13 @@ export class ProductService {
       parsed.data.mediaType,
     );
     return { artifactId, sha256, sizeBytes: bytes.byteLength };
+  }
+
+  /** Knowledge reads go to the `api` views and functions, not to `api.product_read`. */
+  private readKnowledge(session: CallerSession, operation: KnowledgeOperation, payload: JsonObject): Promise<unknown> {
+    if (!this.knowledge)
+      throw new ProductError("NOT_AVAILABLE", `${operation}: this deployment has no knowledge reader`);
+    return this.knowledge.read(session, operation, payload);
   }
 
   private async storeManifest(result: JsonObject): Promise<void> {

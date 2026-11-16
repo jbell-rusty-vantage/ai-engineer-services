@@ -1,0 +1,94 @@
+import type { GuideTopic } from "../surface.js";
+
+/**
+ * Which guide topic explains each public operation. Every public operation appears exactly once (tested), so a new
+ * operation cannot ship without a place in the guide.
+ */
+export const operationTopics: Readonly<Record<GuideTopic, readonly string[]>> = {
+  knowledge: ["search_knowledge", "get_claim", "get_entity", "get_source", "list_due"],
+  schema: [],
+  authoring: [
+    "create_work",
+    "revise_work",
+    "list_works",
+    "get_revision",
+    "register_file_set",
+    "record_deployment",
+    "revoke_asset",
+    "preview_exposure",
+    "review_revision",
+    "freeze_release",
+    "open_distribution",
+    "grant_reader",
+    "offer_release",
+    "end_offer",
+    "get_offer",
+    "list_library",
+  ],
+  research: [
+    "propose_research",
+    "accept_research",
+    "set_acceptance_state",
+    "withdraw_acceptance",
+    "get_acceptance",
+    "deliver_output",
+    "decide_delivery",
+    "add_support",
+    "get_support",
+    "get_report",
+    "trace_assertion",
+    "trace_reverse",
+    "create_watch",
+    "set_watch_state",
+    "list_watches",
+  ],
+  datasets: [
+    "create_dataset",
+    "edit_dataset",
+    "commit_dataset_revision",
+    "propose_dataset_change",
+    "decide_dataset_change",
+    "get_dataset",
+    "get_dataset_diff",
+  ],
+  learning: [
+    "search",
+    "get_lesson_view",
+    "enroll",
+    "adopt_release",
+    "progress",
+    "start_attempt",
+    "submit_attempt",
+    "get_result",
+    "open_appeal",
+    "grant_evidence",
+    "propose_equivalence",
+    "request_environment",
+    "finalize_result",
+    "resolve_appeal",
+    "decide_equivalence",
+  ],
+  workspace: [
+    "ensure_personal_workspace",
+    "create_workspace",
+    "grant_member",
+    "revoke_member",
+    "create_client_grant",
+    "revoke_client_grant",
+    "set_control",
+    "preview_removal",
+    "confirm_removal",
+    "create_connection",
+    "create_thread",
+    "append_message",
+    "get_thread",
+    "invite_guardian",
+    "consent_guardian",
+    "authorize_processing",
+  ],
+};
+
+export function topicForOperation(name: string): GuideTopic | undefined {
+  const entry = Object.entries(operationTopics).find(([, names]) => names.includes(name));
+  return entry?.[0] as GuideTopic | undefined;
+}

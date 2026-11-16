@@ -1,11 +1,16 @@
-import { createProductService, describeDatabaseTarget, loadServiceConfig } from "@aiengineer/service-application";
+import {
+  createProductService,
+  createSchemaWorkspace,
+  describeDatabaseTarget,
+  loadServiceConfig,
+} from "@aiengineer/service-application";
 import { buildRemoteMcpHost } from "./remote-host.js";
 
 const host = process.env.AIENG_MCP_HOST ?? "127.0.0.1";
 const port = Number(process.env.AIENG_MCP_PORT ?? 3201);
 
 const config = loadServiceConfig();
-const app = buildRemoteMcpHost({ service: createProductService(config) });
+const app = buildRemoteMcpHost({ service: createProductService(config), schema: createSchemaWorkspace() });
 
 const shutdown = () => void app.close();
 process.once("SIGINT", shutdown);

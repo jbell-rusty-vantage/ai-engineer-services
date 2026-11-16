@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { createProductService } from "@aiengineer/service-application";
 import { AiEngineerClient } from "@aiengineer/service-client";
-import { buildRemoteMcpHost } from "@aiengineer/service-mcp";
+import { aiEngineerTools, buildRemoteMcpHost } from "@aiengineer/service-mcp";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -76,7 +76,11 @@ await localMcp.connect(
   }),
 );
 const toolNames = (await localMcp.listTools()).tools.map((tool) => tool.name).sort();
-record("local MCP lists the 13 curated tools", toolNames.length === 13, toolNames.join(","));
+record(
+  `local MCP lists the ${aiEngineerTools.length} curated tools`,
+  toolNames.length === aiEngineerTools.length,
+  toolNames.join(","),
+);
 
 // ------------------------------------------------------------------ research loop through the local MCP tools (Build 07)
 const brief = await callTool(localMcp, "draft_work", {

@@ -4,7 +4,9 @@ The AI Engineer product and knowledge API, its MCP server and the `aieng` CLI. E
 operations: the database layer in [`ai-engineer-db-contract`](../ai-engineer-db-contract) enforces permissions,
 freezing and audit, and this service adds transports, edge validation and server-side byte custody.
 
-**Status (2026-11-05): prototype increment 1 (Build 06) plus the Build 07 research operations** (research requests, editable datasets, statements and evidence; 69 public operations, 13 MCP tools). Proven against a disposable Supabase lab stack, not deployed.
+**Status (2026-11-05): prototype increment 1 (Build 06) plus the Build 07 research operations** (research requests, editable datasets, statements and evidence). Proven against a disposable Supabase lab stack, not deployed.
+
+**Consumer surface (2026-11-15):** knowledge reads (`search_knowledge`, `get_claim`, `get_entity`, `get_source`, `list_due`), schema navigation, a guide and a describe, on every transport (74 public operations, 19 MCP tools). Unit-tested and evaluated without a database; the knowledge reads are not yet proven on the lab stack, and three of them answer `NOT_AVAILABLE` until the database gives signed-in requests a knowledge tenant context.
 See [architecture](docs/ARCHITECTURE.md) for what exists and what does not.
 
 GitHub: [`jbell-rusty-vantage/ai-engineer-services`](https://github.com/jbell-rusty-vantage/ai-engineer-services) (public). Schema authority: [`jbell-rusty-vantage/agent-engineer-db-contract`](https://github.com/jbell-rusty-vantage/agent-engineer-db-contract).
@@ -13,13 +15,21 @@ GitHub: [`jbell-rusty-vantage/ai-engineer-services`](https://github.com/jbell-ru
 
 | Package | Name | Role |
 | --- | --- | --- |
-| `packages/contracts` | `@aiengineer/service-contracts` | Operation catalog, payload schemas, error codes, request shapes, `ProductPort` |
-| `packages/application` | `@aiengineer/service-application` | Product use cases over the database gateway, object storage and artifact custody |
+| `packages/contracts` | `@aiengineer/service-contracts` | Operation catalog, payload schemas, error codes, request shapes, `ProductPort`; the surface catalog (jobs, MCP tools, CLI commands) and the guide |
+| `packages/application` | `@aiengineer/service-application` | Product use cases over the database gateway, knowledge reads, schema navigation, object storage and artifact custody |
 | `packages/client` | `@aiengineer/service-client` | Typed HTTP client and site publishing; used by the CLI, the local MCP server and the web app |
 | `apps/api` | `@aiengineer/service-api` | HTTP API (Fastify) |
 | `apps/mcp` | `@aiengineer/service-mcp` | MCP server: local stdio (harness) and remote streamable HTTP (agents without a sandbox) |
 | `apps/cli` | `@aiengineer/service-cli` | `aieng` command line |
-| `skills/ai-engineer` | — | Agent skill describing the workflows |
+| `skills/ai-engineer` | — | Agent skill: a short router to the guide |
+
+## Where an agent starts
+
+One guide, the same text on every transport: the MCP tool `aieng_guide`, `aieng guide [topic]` and
+`GET /v1/guide[/topic]`. It lists the jobs (find knowledge, read a claim or source, see what is due, navigate the
+schema, author content, request research, work with datasets, study and practise) and the tool or command for each.
+`aieng_describe`, `aieng describe <operation>` and `GET /v1/operations/<operation>` give one operation's input
+schema, output shape and an example.
 
 ## Run
 
@@ -33,8 +43,10 @@ pnpm lint        # Biome
 ```
 
 Server processes (API, remote MCP) read `AIENG_DB_URL`, `AIENG_DB_PUBLISHABLE_KEY`, `AIENG_DB_SECRET_KEY` and
-`AIENG_DB_PROJECT_REF` (checked against the URL host). The secret key stays in the server process. A git-ignored `.env`
-is loaded by the `dev`/`start` scripts; see [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) (also the lab `supabase status` mapping).
+`AIENG_DB_PROJECT_REF` (checked against the URL host). The secret key stays in the server process. Schema navigation
+reads the generated schema workspace at `AIENG_SCHEMA_WORKSPACE_DIR` (default: the sibling checkout
+`../ai-engineer-db-contract/workspace`). A git-ignored `.env` is loaded by the `dev`/`start` scripts; see
+[docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) (also the lab `supabase status` mapping).
 
 ```bash
 node apps/api/dist/index.js          # http://127.0.0.1:3200  (AIENG_API_HOST / AIENG_API_PORT)
@@ -42,10 +54,13 @@ node apps/mcp/dist/remote.js         # http://127.0.0.1:3201/mcp (AIENG_MCP_HOST
 ```
 
 Clients (CLI, local MCP) read `AIENG_API_URL`, `AIENG_ACCESS_TOKEN` (the user's Supabase session) and optionally
-`AIENG_CLIENT_TOKEN` (a scoped grant minted with `create_client_grant`).
+`AIENG_CLIENT_TOKEN` (a scoped grant minted with `create_client_grant`). `aieng guide` and `aieng describe` need
+neither.
 
 ```bash
-node apps/cli/dist/main.js operations
+node apps/cli/dist/main.js guide
+node apps/cli/dist/main.js knowledge search "structured output retries" --lens evidence
+node apps/cli/dist/main.js schema search "verified claims"
 node apps/cli/dist/main.js search "idempotency keys"
 node apps/cli/dist/main.js site publish ./dist --workspace <workspace-id>
 ```
@@ -55,6 +70,19 @@ Local MCP server for a harness (`.mcp.json` style):
 ```json
 { "mcpServers": { "ai-engineer": { "command": "node", "args": ["<repo>/apps/mcp/dist/stdio.js"],
   "env": { "AIENG_API_URL": "http://127.0.0.1:3200", "AIENG_ACCESS_TOKEN": "<session token>" } } } }
+```
+
+## Consumer evaluation
+
+A deterministic, read-only scorecard of the questions an agent comes with, asked through the MCP path, the HTTP path
+and the CLI: is the tool there, described and typed; is the answer non-empty and small; does the guide name only
+tools, operations and commands that exist. It builds the API and the remote MCP server in process on loopback ports
+and writes `lab-results/consumer-surface.json`.
+
+```bash
+pnpm build
+pnpm eval:consumer-surface --without-database   # the guide, describe and schema checks; knowledge answers not run
+pnpm eval:consumer-surface                      # with the lab stack's AIENG_DB_* exported (docs/ENVIRONMENT.md)
 ```
 
 ## Lab proofs

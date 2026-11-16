@@ -28,13 +28,32 @@ async function textBlockKey(context: ToolContext, headRevisionId: string | undef
   return first?.type === "text" && typeof first.key === "string" ? first.key : randomUUID();
 }
 
+/**
+ * Research brief metadata (`aieng.research-brief.v1`), as the database checks it when the brief is proposed. Fields
+ * stay optional here so a brief can be drafted in steps; `propose_research` reports what is still missing.
+ */
+const researchBrief = z.looseObject({
+  schema: z.literal("aieng.research-brief.v1"),
+  question: z.string().optional(),
+  plan: z.array(z.unknown()).optional().describe("At least one step"),
+  budget_limit_usd: z.number().min(0).optional(),
+  knowledge_policy: z.enum(["sealed", "latest_at_run"]).optional(),
+  obligations: z
+    .array(
+      z.looseObject({
+        key: z.string(),
+        form: z.enum(["dataset", "report", "experience", "finding_set", "file", "course_content"]),
+        enforcement: z.enum(["required", "expected", "optional"]).optional(),
+        expected_work_kind: z.string().optional(),
+      }),
+    )
+    .optional()
+    .describe("The outputs the research owes"),
+  world: z.looseObject({ precision: z.enum(["day", "instant"]), from: z.string(), to: z.string() }).optional(),
+});
+
 export const draftWork = defineTool({
   name: "draft_work",
-  title: "Draft or revise a work",
-  description:
-    "Create a work (lesson, note, challenge, project, ...) or save a new revision of an existing one. Give `markdown` for a " +
-    "single text block, or `blocks` (aieng.work-body.v2) plus `bindings` for rich content. Revisions are immutable; a stale " +
-    "expected_head is a conflict.",
   input: z
     .object({
       workspace_id: id,
@@ -46,10 +65,13 @@ export const draftWork = defineTool({
         .regex(/^[a-z0-9][a-z0-9-]{0,99}$/)
         .optional(),
       title: z.string().min(1),
-      markdown: z.string().optional(),
-      blocks: z.array(z.record(z.string(), z.unknown())).optional(),
-      bindings: z.array(z.record(z.string(), z.unknown())).optional(),
-      metadata: z.record(z.string(), z.unknown()).optional(),
+      markdown: z.string().optional().describe("One text block; give this or blocks"),
+      blocks: z.array(z.record(z.string(), z.unknown())).optional().describe("aieng.work-body.v2 blocks"),
+      bindings: z.array(z.record(z.string(), z.unknown())).optional().describe("Things the blocks use"),
+      metadata: z
+        .looseObject({ research: researchBrief.optional() })
+        .optional()
+        .describe("Body metadata; research is the brief of a work of kind brief"),
     })
     .refine((input) => Boolean(input.markdown) !== Boolean(input.blocks), "give exactly one of markdown or blocks")
     .refine((input) => Boolean(input.work_id) || Boolean(input.kind), "kind is required when creating a work"),
@@ -81,17 +103,15 @@ export const draftWork = defineTool({
 
 export const publishBuiltSite = defineTool({
   name: "publish_built_site",
-  title: "Publish a built site",
-  description:
-    "Publish a site built in the harness (pages, scripts, styles, images) into a workspace: every file is uploaded and verified, " +
-    "registered as one file set, and given an isolated-origin preview deployment. Locally pass `directory`; remotely pass `files` " +
-    "with base64 content. Embed the result in a lesson with an embedded_site block bound to the file set (role build).",
   input: z
     .object({
       workspace_id: id,
       entrypoint: z.string().default("index.html"),
       directory: z.string().optional().describe("Local folder (local MCP server only)"),
-      files: z.array(z.object({ path: z.string().min(1), content_base64: z.string() })).optional(),
+      files: z
+        .array(z.object({ path: z.string().min(1), content_base64: z.string() }))
+        .optional()
+        .describe("Remote server: the site's files"),
       environment: z.enum(["preview", "published"]).default("preview"),
     })
     .refine((input) => Boolean(input.directory) !== Boolean(input.files), "give exactly one of directory or files"),

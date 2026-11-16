@@ -9,6 +9,10 @@ import {
   ProductError,
   type ProductPort,
   type ReadInput,
+  type SchemaPage,
+  type SchemaPort,
+  type SchemaSearchOptions,
+  type SchemaSearchResult,
 } from "@aiengineer/service-contracts";
 
 export interface ClientOptions {
@@ -29,7 +33,7 @@ export interface CatalogEntry {
 }
 
 /** Typed HTTP client for the AI Engineer product API; used by the CLI, the local MCP server and the web app. */
-export class AiEngineerClient implements ProductPort {
+export class AiEngineerClient implements ProductPort, SchemaPort {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
 
@@ -65,6 +69,18 @@ export class AiEngineerClient implements ProductPort {
   async operations(): Promise<CatalogEntry[]> {
     const body = await this.send<{ operations: CatalogEntry[] }>("/v1/operations", { method: "GET" });
     return body.operations;
+  }
+
+  searchSchema(query: string, options: SchemaSearchOptions = {}): Promise<SchemaSearchResult> {
+    const search = new URLSearchParams({ query });
+    if (options.limit) search.set("limit", String(options.limit));
+    if (options.kind) search.set("kind", options.kind);
+    return this.send<SchemaSearchResult>(`/v1/schema/search?${search.toString()}`, { method: "GET" });
+  }
+
+  getSchemaPage(page?: string): Promise<SchemaPage> {
+    const path = page ? `/${page.split("/").map(encodeURIComponent).join("/")}` : "";
+    return this.send<SchemaPage>(`/v1/schema/pages${path}`, { method: "GET" });
   }
 
   private post<T>(path: string, body: unknown): Promise<T> {

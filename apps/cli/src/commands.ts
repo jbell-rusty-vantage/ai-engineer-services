@@ -6,30 +6,40 @@ import {
   mediaTypeForPath,
   publishSite,
 } from "@aiengineer/service-client";
-import { artifactTypes, assetUsages, type JsonObject, ProductError } from "@aiengineer/service-contracts";
+import {
+  artifactTypes,
+  assetUsages,
+  commandUsage,
+  describeReference,
+  formatSchemaPage,
+  type JsonObject,
+  ProductError,
+  renderGuide,
+  surfaceCommands,
+} from "@aiengineer/service-contracts";
+import { runKnowledgeCommand } from "./knowledge-commands.js";
+import { argument, numberOption, type Options, oneOf, requiredOption, stringOption } from "./options.js";
 
-export type Options = Readonly<Record<string, string | boolean | undefined>>;
+export type { Options } from "./options.js";
 
+/** The usage text, generated from the surface catalog the guide and the MCP server also read. */
 export const usage = `aieng — AI Engineer command line
 
-Environment: AIENG_API_URL, AIENG_ACCESS_TOKEN, optional AIENG_CLIENT_TOKEN.
+Environment: AIENG_API_URL, AIENG_ACCESS_TOKEN, optional AIENG_CLIENT_TOKEN. Start with: aieng guide
 
-  aieng operations
-  aieng command <operation> [--workspace <id>] [--head <id>] [--key <idempotency-key>] [--payload <json|@file>]
-  aieng read <operation> [--workspace <id>] [--payload <json|@file>]
-  aieng upload <file> --workspace <id> --usage <usage> --rights <text> [--type <artifact-type>] [--media <type>]
-  aieng site publish <directory> --workspace <id> [--entry index.html] [--environment preview|published]
-  aieng search <query> [--limit <n>]`;
+${surfaceCommands.map((command) => `  ${commandUsage(command)}`).join("\n")}`;
 
-function stringOption(options: Options, name: string): string | undefined {
-  const value = options[name];
-  return typeof value === "string" && value.length > 0 ? value : undefined;
+/** Commands answered from the built-in catalog: they need no API and no credentials. */
+const referenceCommands = new Set(["guide", "describe"]);
+
+export function isReferenceCommand(command: string | undefined): boolean {
+  return command !== undefined && referenceCommands.has(command);
 }
 
-function requiredOption(options: Options, name: string): string {
-  const value = stringOption(options, name);
-  if (!value) throw new ProductError("VALIDATION", `--${name} is required`);
-  return value;
+/** `aieng guide [topic]` prints the guide text; `aieng describe <operation>` one operation's shapes. */
+export function runReferenceCommand(positionals: readonly string[]): unknown {
+  const [command, first] = positionals;
+  return command === "guide" ? renderGuide(first).text : describeReference(argument(first, "operation name"));
 }
 
 async function payloadFrom(options: Options): Promise<JsonObject> {
@@ -42,13 +52,22 @@ async function payloadFrom(options: Options): Promise<JsonObject> {
   return parsed as JsonObject;
 }
 
-function oneOf<T extends string>(value: string, allowed: readonly T[], name: string): T {
-  if (!(allowed as readonly string[]).includes(value))
-    throw new ProductError("VALIDATION", `--${name} must be one of ${allowed.join(", ")}`);
-  return value as T;
+async function runSchemaCommand(
+  client: AiEngineerClient,
+  verb: string | undefined,
+  subject: string | undefined,
+  options: Options,
+): Promise<unknown> {
+  if (verb === "search") {
+    const limit = numberOption(options, "limit");
+    const kind = stringOption(options, "kind");
+    return client.searchSchema(argument(subject, "query"), { ...(limit ? { limit } : {}), ...(kind ? { kind } : {}) });
+  }
+  if (verb === "get") return formatSchemaPage(await client.getSchemaPage(subject));
+  throw new ProductError("VALIDATION", "usage: aieng schema search <query> | aieng schema get [page]");
 }
 
-/** Runs one CLI command and returns the JSON value to print. */
+/** Runs one CLI command and returns the value to print: text as it is, anything else as JSON. */
 export async function runCommand(
   client: AiEngineerClient,
   positionals: readonly string[],
@@ -56,30 +75,35 @@ export async function runCommand(
 ): Promise<unknown> {
   const [command, first, second] = positionals;
   switch (command) {
+    case "guide":
+    case "describe":
+      return runReferenceCommand(positionals);
     case "operations":
       return client.operations();
+    case "knowledge":
+      return runKnowledgeCommand(client, first, second, options);
+    case "schema":
+      return runSchemaCommand(client, first, second, options);
     case "command":
-      if (!first) throw new ProductError("VALIDATION", "operation name required");
-      return client.command(first, {
+      return client.command(argument(first, "operation name"), {
         workspaceId: stringOption(options, "workspace") ?? null,
         expectedHead: stringOption(options, "head") ?? null,
         payload: await payloadFrom(options),
         ...(stringOption(options, "key") ? { idempotencyKey: requiredOption(options, "key") } : {}),
       });
     case "read":
-      if (!first) throw new ProductError("VALIDATION", "operation name required");
-      return client.read(first, {
+      return client.read(argument(first, "operation name"), {
         workspaceId: stringOption(options, "workspace") ?? null,
         payload: await payloadFrom(options),
       });
     case "upload": {
-      if (!first) throw new ProductError("VALIDATION", "file path required");
-      const bytes = new Uint8Array(await readFile(first));
+      const file = argument(first, "file path");
+      const bytes = new Uint8Array(await readFile(file));
       return client.uploadAsset(
         {
           workspaceId: requiredOption(options, "workspace"),
           artifactType: oneOf(stringOption(options, "type") ?? "authored_work_asset", artifactTypes, "type"),
-          mediaType: stringOption(options, "media") ?? mediaTypeForPath(basename(first)),
+          mediaType: stringOption(options, "media") ?? mediaTypeForPath(basename(file)),
           usage: oneOf(requiredOption(options, "usage"), assetUsages, "usage"),
           rightsBasis: requiredOption(options, "rights"),
         },
@@ -99,11 +123,10 @@ export async function runCommand(
           "environment",
         ),
       });
-    case "search":
-      if (!first) throw new ProductError("VALIDATION", "query required");
-      return client.read("search", {
-        payload: { query: first, ...(stringOption(options, "limit") ? { limit: Number(options.limit) } : {}) },
-      });
+    case "search": {
+      const limit = numberOption(options, "limit");
+      return client.read("search", { payload: { query: argument(first, "query"), ...(limit ? { limit } : {}) } });
+    }
     default:
       throw new ProductError("VALIDATION", `unknown command${command ? ` ${command}` : ""}\n\n${usage}`);
   }

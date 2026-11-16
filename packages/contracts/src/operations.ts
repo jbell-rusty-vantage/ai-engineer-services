@@ -176,6 +176,22 @@ const rows: readonly Row[] = [
     "Find every statement, value, dataset revision, report and delivery that uses a source",
   ],
   ["list_watches", "read", "read", "List a workspace's watches"],
+  // Knowledge reads: served by the application from the `api` views and functions with the caller's own session
+  [
+    "search_knowledge",
+    "read",
+    "read",
+    "Search the industry knowledge base and its evidence; hits carry an evidence signal and what to read next",
+  ],
+  ["get_claim", "read", "read", "Read one claim: status, admission, verdicts, probe cells, restatements and conflicts"],
+  ["get_entity", "read", "read", "Read one entity's card (facts, relationships, events, sources) or a library dossier"],
+  ["get_source", "read", "read", "Read one source's latest assessments and the claims behind its track record"],
+  [
+    "list_due",
+    "read",
+    "read",
+    "List what is due: attention policies, probe revalidation, releases needing review, optionally changes since",
+  ],
 ];
 
 function definitionFor([name, kind, scope, summary, exposure = "public"]: Row): OperationDefinition {

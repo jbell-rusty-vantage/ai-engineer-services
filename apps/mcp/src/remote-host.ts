@@ -1,11 +1,13 @@
 import { type ProductService, SessionProductPort } from "@aiengineer/service-application";
-import { headerNames } from "@aiengineer/service-contracts";
+import { headerNames, type SchemaPort } from "@aiengineer/service-contracts";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import Fastify, { type FastifyInstance } from "fastify";
 import { createAiEngineerMcpServer } from "./server.js";
 
 export interface RemoteMcpHostOptions {
   readonly service: ProductService;
+  /** Schema navigation, read in process from the generated schema workspace. */
+  readonly schema?: SchemaPort;
 }
 
 /**
@@ -24,7 +26,7 @@ export function buildRemoteMcpHost(options: RemoteMcpHostOptions): FastifyInstan
       accessToken: authorization.slice("Bearer ".length),
       ...(typeof clientToken === "string" && clientToken ? { clientToken } : {}),
     });
-    const server = createAiEngineerMcpServer({ port, localFiles: false });
+    const server = createAiEngineerMcpServer({ port, schema: options.schema, localFiles: false });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     reply.hijack();
     reply.raw.on("close", () => {

@@ -2,17 +2,22 @@ import type { CallerSession, ProductService } from "@aiengineer/service-applicat
 import {
   assetUploadMetadata,
   commandRequest,
+  describeReference,
   headerNames,
   httpStatusForError,
   maxAssetBytes,
   ProductError,
   publicOperations,
   readRequest,
+  renderGuide,
+  type SchemaPort,
 } from "@aiengineer/service-contracts";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 
 export interface ApiServerOptions {
   readonly service: ProductService;
+  /** Schema navigation over the generated schema workspace; without it the schema routes answer `NOT_AVAILABLE`. */
+  readonly schema?: SchemaPort;
 }
 
 function callerSession(request: FastifyRequest): CallerSession {
@@ -53,6 +58,11 @@ function assetMetadataFrom(request: FastifyRequest): unknown {
   }
 }
 
+function schemaPort(options: ApiServerOptions): SchemaPort {
+  if (!options.schema) throw new ProductError("NOT_AVAILABLE", "schema navigation is not configured on this server");
+  return options.schema;
+}
+
 /** The AI Engineer product API: one HTTP surface over the shared application layer. */
 export function buildApiServer(options: ApiServerOptions): FastifyInstance {
   const app = Fastify({ logger: false, bodyLimit: 1024 * 1024 });
@@ -77,9 +87,34 @@ export function buildApiServer(options: ApiServerOptions): FastifyInstance {
 
   app.get("/health", async () => ({ status: "ok" }));
 
+  // Reference routes: the guide, the catalog and schema navigation. They read no user data and need no session.
+  app.get("/v1/guide", async () => renderGuide());
+
+  app.get<{ Params: { topic: string } }>("/v1/guide/:topic", async (request) => renderGuide(request.params.topic));
+
   app.get("/v1/operations", async () => ({
     operations: publicOperations().map(({ name, kind, scope, summary }) => ({ name, kind, scope, summary })),
   }));
+
+  app.get<{ Params: { operation: string } }>("/v1/operations/:operation", async (request) =>
+    describeReference(request.params.operation),
+  );
+
+  app.get<{ Querystring: { query?: string; limit?: string; kind?: string } }>("/v1/schema/search", async (request) => {
+    const { query, limit, kind } = request.query;
+    if (!query?.trim()) throw new ProductError("VALIDATION", "query is required");
+    if (limit !== undefined && !/^[0-9]+$/.test(limit)) throw new ProductError("VALIDATION", "limit must be a number");
+    return schemaPort(options).searchSchema(query, {
+      ...(limit ? { limit: Number(limit) } : {}),
+      ...(kind ? { kind } : {}),
+    });
+  });
+
+  app.get("/v1/schema/pages", async () => schemaPort(options).getSchemaPage());
+
+  app.get<{ Params: { "*": string } }>("/v1/schema/pages/*", async (request) =>
+    schemaPort(options).getSchemaPage(request.params["*"]),
+  );
 
   app.post<{ Params: { operation: string } }>("/v1/commands/:operation", async (request) => {
     const session = callerSession(request);

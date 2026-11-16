@@ -105,23 +105,26 @@ export const evidenceItem = z.looseObject({
   ]),
 });
 
+export const datasetValueStatuses = [
+  "observed",
+  "calculated",
+  "inferred",
+  "estimated",
+  "unknown",
+  "not_found",
+  "undisclosed",
+  "conflicting",
+  "not_applicable",
+] as const;
+
 const money = z.number().min(0);
+const instant = z.iso.datetime({ offset: true });
 const datasetCell = z.looseObject({
   row_key: id,
   field_key: id,
   value: z.unknown().optional(),
-  value_status: z.enum([
-    "observed",
-    "calculated",
-    "inferred",
-    "estimated",
-    "unknown",
-    "not_found",
-    "undisclosed",
-    "conflicting",
-    "not_applicable",
-  ]),
-  observed_at: z.iso.datetime({ offset: true }).nullish(),
+  value_status: z.enum(datasetValueStatuses),
+  observed_at: instant.nullish(),
 });
 const datasetEdits = {
   fields_add: z.array(record).optional(),
@@ -141,6 +144,26 @@ const supportTarget = z.looseObject({
   id,
   answer_key: z.string().optional(),
 });
+
+/**
+ * Lenses the knowledge search reads. `ours` and `private` hold workspace content and stay behind `search`, which
+ * applies the per-passage readability rules.
+ */
+export const knowledgeLenses = ["corpus", "evidence"] as const;
+
+/** Content kinds of corpus and evidence search items (`passage` and `authored` belong to the other lenses). */
+export const knowledgeContentKinds = [
+  "chunk",
+  "summary",
+  "claim",
+  "record",
+  "profile",
+  "timeline",
+  "measurement",
+  "unit",
+  "digest",
+  "guidance",
+] as const;
 
 /** Payload schemas by operation. Operations absent here are validated by the database layer only. */
 export const payloadSchemas = {
@@ -333,6 +356,29 @@ export const payloadSchemas = {
     capture_id: optionalId,
   }),
   list_watches: z.strictObject({}),
+  // Knowledge reads: the industry knowledge base and its evidence
+  search_knowledge: z.strictObject({
+    query: nonBlank.max(4096),
+    lenses: z.array(z.enum(knowledgeLenses)).min(1).optional(),
+    tiers: z.array(z.number().int().min(0).max(4)).min(1).optional(),
+    spaces: z
+      .array(z.string().regex(/^[a-z][a-z0-9_-]{0,62}$/))
+      .min(1)
+      .optional(),
+    kinds: z.array(z.enum(knowledgeContentKinds)).min(1).optional(),
+    as_of: instant.optional(),
+    limit: z.number().int().min(1).max(50).optional(),
+    collapse: z.boolean().optional(),
+  }),
+  get_claim: z.strictObject({ claim_id: id }),
+  get_entity: z.union([z.strictObject({ entity_id: id }), z.strictObject({ library: nonBlank.max(200) })]),
+  get_source: z.union([z.strictObject({ source_entity_id: id }), z.strictObject({ name: nonBlank.max(200) })]),
+  list_due: z.strictObject({
+    as_of: instant.optional(),
+    since: instant.optional(),
+    release_id: optionalId,
+    limit: z.number().int().min(1).max(100).optional(),
+  }),
 } satisfies Record<string, z.ZodType>;
 
 export type PayloadSchemas = typeof payloadSchemas;
