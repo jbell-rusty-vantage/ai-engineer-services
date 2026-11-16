@@ -53,30 +53,42 @@ transient.
 
 ## Knowledge reads
 
-`search_knowledge`, `get_claim`, `get_entity`, `get_source` and `list_due` are catalog operations served by
-`packages/application/src/knowledge`, not by `api.product_read`. Each one composes the `api` views and functions of
-`ai-engineer-db-contract` through PostgREST with the caller's own session (publishable key plus the caller's token;
-never the service key) and returns a compact projection.
+`search_knowledge`, `get_claim`, `get_entity`, `get_fact_evidence`, `list_entity_changes`, `get_summary_evidence`,
+`get_source` and `list_due` are catalog operations served by `packages/application/src/knowledge`, not by
+`api.product_read`. Each one composes the `api` views and functions of `ai-engineer-db-contract` through PostgREST
+with the caller's own session (publishable key plus the caller's token; never the service key) and returns a compact
+projection.
 
 | Operation | Database objects (`api` schema) |
 | --- | --- |
-| `search_knowledge` | `search_unified` (lenses `corpus` and `evidence` only, always passed explicitly; no query embedding, so full text and trigram rank) |
+| `search_knowledge` | `search_knowledge` (lenses `corpus` and `evidence` only, no workspace parameter; no query embedding is sent, so full text and trigram rank) |
 | `get_claim` | `claim_candidates`, `verified_claims`, `claim_verdicts`, `claim_restatements`, `claim_conflicts`, `probe_matrix` |
 | `get_entity` | `entity_card` (by id) or `library_dossier` (by library slug) |
+| `get_fact_evidence` | `fact_locators` |
+| `list_entity_changes` | `what_changed`, `knowledge_head` (the default upper sequence) |
+| `get_summary_evidence` | `summary_evidence` |
 | `get_source` | `source_registry`, `source_track_record` |
 | `list_due` | `attention_due`, `probe_revalidation_due`, `releases_needing_review`; optional `changes_since`, `modules_affected_by_release` |
 
-**Open database gap (2026-11-15, found by reading the contract; not yet confirmed on the lab stack).** The grants
-allow these reads (`authenticated` has `SELECT` and `EXECUTE`), but most of the objects filter on
-`util.current_tenant_id()`, which reads the `app.tenant_id` setting. PostgREST requests do not set it, so
-`verified_claims`, `claim_candidates`, `claim_conflicts`, `entity_card`, `probe_revalidation_due`,
-`releases_needing_review`, `changes_since` and `modules_affected_by_release` return no rows for a signed-in caller
-(Build 08 D-82 records the same effect in `psql`). `search_unified` uses the default tenant and is not affected.
-Until the schema owner gives authenticated requests a tenant context, `get_claim`, `get_entity` by id and `list_due`
-check `api.knowledge_head()` first and answer `NOT_AVAILABLE` instead of an empty result
-(`knowledge/tenant-context.ts`); `search_knowledge`, the library dossier and `get_source` read objects without that
-filter. Client-grant scopes are enforced inside `api.product_command` and `api.product_read`, so they do not apply
-to these reads.
+**Tenant context (database contract migration `20261115130000`, Build 08 D-82).** Most of these objects filter on
+`util.current_tenant_id()`. PostgREST cannot set `app.tenant_id`, so before that migration they returned no rows to a
+signed-in caller. The migration resolves a signed-in request to the deployment's tenant, and the reads answer;
+`anon` still reads nothing. The service keeps one safeguard for a database without the migration (or with nothing
+ingested): when a tenant-scoped read comes back empty, it asks `api.knowledge_head()`; sequence 0 turns the answer into
+`NOT_AVAILABLE` instead of `NOT_FOUND` or "nothing due" (`knowledge/tenant-context.ts`). A read that finds its rows
+makes no extra call.
+
+**Search scope.** `api.search_unified` takes the private scope from its caller (`p_workspace_ids`), so the same
+migration made it non-executable for `anon` and `authenticated`: before it, any caller could read another workspace's
+private passages by passing its id. `search_knowledge` calls `api.search_knowledge`, which has no workspace parameter
+and refuses every lens but `corpus` and `evidence`. Private notes and released course material stay behind the product
+`search` operation, where `api.product_read` derives the scope from the caller's identity.
+
+**Client grants.** `api.product_command` and `api.product_read` check a presented client grant inside the database. The
+knowledge reads do not pass through them, so `ProductService` asks for the same check first, through
+`api.product_scope(<scope>)` with the operation's scope from the catalog (`read`), whenever the request carries a client
+token: a grant without the scope is `CLIENT_SCOPE_DENIED`, a revoked or foreign one `CLIENT_GRANT_INVALID`. A request
+without a client token is not narrowed, as everywhere else.
 
 ## Schema navigation
 
@@ -103,7 +115,8 @@ The 19 tools are declared in the surface catalog (`packages/contracts/src/surfac
 title and one-line description; the guide and `aieng_describe` carry the depth.
 
 - Start: `aieng_guide`, `aieng_describe`.
-- Knowledge: `search_knowledge`, `inspect_knowledge` (claim, entity, source, due).
+- Knowledge: `search_knowledge`, `inspect_knowledge` (claim, entity, fact evidence, entity changes, summary evidence,
+  source, due).
 - Schema: `schema_search`, `schema_get`.
 - Learning: `search_learning`, `read_lesson`, `annotate_lesson_block`, `check_progress`, `start_attempt`,
   `submit_attempt`.
@@ -136,12 +149,14 @@ JSON.
 | S-09 | The knowledge search never reaches the `ours` and `private` lenses; `search` keeps them behind its readability rules |
 | S-10 | Tool names and descriptions, CLI commands and the guide come from one surface catalog; the skill only routes to the guide |
 | S-11 | Schema navigation is file access to the generated workspace and reports its head in every answer |
+| S-12 | The tenant-context check runs only when a tenant-scoped read is empty: it decides between `NOT_AVAILABLE` and `NOT_FOUND` or "nothing due", and costs a found read nothing (2026-11-16) |
+| S-13 | A request that carries a client token passes `api.product_scope` with the operation's catalog scope before any knowledge read (2026-11-16) |
 
 ## Not built yet
 
-- A tenant context for authenticated PostgREST requests (see Knowledge reads); `fact_locators`, `summary_evidence`,
-  `what_changed` and `resolve_entity` are not wired into an operation.
-- Lab proof of the knowledge reads, and a semantic channel for `search_knowledge` (it sends no query embedding).
+- `resolve_entity` is not wired into an operation (an entity id comes from a search hit or a dossier).
+- `get_summary_evidence` is unit-tested only: the lab holds no document summary to read back.
+- A semantic channel for `search_knowledge` (it sends no query embedding).
 - Login and device flow for the CLI and harness; tokens are currently provided by environment variables.
 - OAuth for the remote MCP server.
 - A worker app for grading runners, indexing and conversion. The lab script plays the worker.

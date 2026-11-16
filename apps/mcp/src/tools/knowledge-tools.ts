@@ -30,16 +30,26 @@ function required(value: string | undefined, what: string): string {
 export const inspectKnowledge = defineTool({
   name: "inspect_knowledge",
   input: z.object({
-    what: z.enum(["claim", "entity", "source", "due"]),
-    id: id.optional().describe("The claim id, entity id or source entity id (from a search hit)"),
+    what: z.enum(["claim", "entity", "fact_evidence", "entity_changes", "summary_evidence", "source", "due"]),
+    id: id
+      .optional()
+      .describe(
+        "The claim id, entity id, summary id or source entity id (entity for fact_evidence and entity_changes)",
+      ),
     library: z.string().optional().describe("entity: a library slug, for its dossier instead of a card"),
+    stream_kind: z.string().optional().describe("fact_evidence: the fact kind, as stream_kind on the entity card"),
+    scope_key: z.string().optional().describe("fact_evidence: one scope of that kind, as scope_key on the card"),
+    after_seq: z.number().int().min(0).optional().describe("entity_changes: changes after this knowledge sequence"),
+    through_seq: z.number().int().min(1).optional().describe("entity_changes: up to this sequence (default: head)"),
     name: z.string().optional().describe("source: the source's name instead of its id"),
     as_of: z.string().optional().describe("due: evaluate at this ISO time (default now)"),
     since: z.string().optional().describe("due: also list what was learned after this ISO time"),
     release_id: id.optional().describe("due: also list our modules affected by this software release"),
+    limit: z.number().int().min(1).max(100).optional().describe("fact_evidence, entity_changes, summary_evidence, due"),
   }),
   run: (context, input) => {
     const read = (operation: string, payload: Record<string, unknown>) => context.port.read(operation, { payload });
+    const limit = input.limit ? { limit: input.limit } : {};
     switch (input.what) {
       case "claim":
         return read("get_claim", { claim_id: required(input.id, "claim") });
@@ -48,6 +58,23 @@ export const inspectKnowledge = defineTool({
           "get_entity",
           input.library ? { library: input.library } : { entity_id: required(input.id, "entity") },
         );
+      case "fact_evidence":
+        if (!input.stream_kind) throw new ProductError("VALIDATION", "stream_kind is required for fact_evidence");
+        return read("get_fact_evidence", {
+          entity_id: required(input.id, "fact's entity"),
+          stream_kind: input.stream_kind,
+          ...(input.scope_key ? { scope_key: input.scope_key } : {}),
+          ...limit,
+        });
+      case "entity_changes":
+        return read("list_entity_changes", {
+          entity_id: required(input.id, "changed entity"),
+          ...(input.after_seq === undefined ? {} : { after_seq: input.after_seq }),
+          ...(input.through_seq === undefined ? {} : { through_seq: input.through_seq }),
+          ...limit,
+        });
+      case "summary_evidence":
+        return read("get_summary_evidence", { summary_id: required(input.id, "summary"), ...limit });
       case "source":
         return read(
           "get_source",
@@ -58,6 +85,7 @@ export const inspectKnowledge = defineTool({
           ...(input.as_of ? { as_of: input.as_of } : {}),
           ...(input.since ? { since: input.since } : {}),
           ...(input.release_id ? { release_id: input.release_id } : {}),
+          ...limit,
         });
     }
   },

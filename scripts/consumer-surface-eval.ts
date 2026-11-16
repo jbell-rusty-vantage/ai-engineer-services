@@ -15,7 +15,8 @@
  *   pnpm eval:consumer-surface                      database from AIENG_DB_* (the lab stack), session from AIENG_ACCESS_TOKEN
  *   pnpm eval:consumer-surface --without-database   knowledge answers are reported as not run; everything else runs
  *
- * Options: --query <keywords> (default "agent"), --claim <claim-id>, --source <name>, --strict (exit 1 on a failure).
+ * Options: --query <keywords> (default "agent"), --claim <claim-id>, --source <name>, --entity <entity-id>,
+ * --fact-query <keywords> (default "price"), --strict (exit 1 on a failure).
  * Without AIENG_ACCESS_TOKEN a lab user is created, and only when AIENG_DB_URL is a loopback lab stack (that Auth
  * user is the one thing this script ever writes). Credentials are never printed. The result is a scorecard, not a
  * gate: it records what the surface answers today so a change can be measured.
@@ -57,6 +58,8 @@ const { values } = parseArgs({
     query: { type: "string" },
     claim: { type: "string" },
     source: { type: "string" },
+    entity: { type: "string" },
+    "fact-query": { type: "string" },
   },
 });
 
@@ -67,6 +70,7 @@ const questions = {
   start: "Where do I start, and which tool do I use for which job?",
   find: "How do I find what the knowledge base already knows about a topic, and how well it is supported?",
   claim: "How do I read one verified claim with its evidence and verdicts?",
+  entity: "How do I read one entity, where its facts come from and what changed for it?",
   source: "How do I read one source and its track record?",
   due: "What is stale or due for review?",
   schema: "How do I navigate the schema to find where something lives?",
@@ -139,7 +143,7 @@ function serviceWithoutDatabase(): ProductService {
   const refuse = async (): Promise<never> => {
     throw new ProductError("UNAVAILABLE", "evaluation without a database");
   };
-  const database: DatabaseGateway = { command: refuse, read: refuse, worker: refuse };
+  const database: DatabaseGateway = { command: refuse, read: refuse, scope: refuse, worker: refuse };
   const storage: ObjectStorage = { put: refuse, get: refuse };
   return new ProductService(database, storage);
 }
@@ -284,6 +288,9 @@ async function startChecks(): Promise<void> {
 const query = options.query ?? "agent";
 const hitFields = ["ref", "kind", "title", "snippet", "score", "evidence", "read_more"];
 const claimFields = ["statement", "status", "verified", "verdicts", "probes", "restatements", "conflicts"];
+const cardFields = ["entity", "facts", "relationships", "events", "sources", "truncated"];
+const factFields = ["entity_id", "stream_kind", "facts", "count", "truncated"];
+const changeFields = ["after_seq", "through_seq", "changes", "counts", "truncated"];
 const sourceFields = ["source", "assessments", "track_record"];
 const dueFields = ["attention", "probe_revalidation", "releases_needing_review", "counts"];
 
@@ -305,15 +312,18 @@ function searchCheck(path: Path, answer: Answer, problem: string): void {
   );
 }
 
-function recordCheck(question: string, path: Path, answer: Answer, fields: readonly string[], problem: string): void {
+function recordCheck(
+  question: string,
+  path: Path,
+  answer: Answer,
+  fields: readonly string[],
+  problem: string,
+  summary = "all fields present",
+): void {
   const value = object(answer.value);
   const missing = fields.filter((field) => !(field in value));
   const tokens = estimateTokens(answer.text);
-  const observed = answer.error
-    ? failure(answer)
-    : missing.length === 0
-      ? "all fields present"
-      : `missing ${missing.join(", ")}`;
+  const observed = answer.error ? failure(answer) : missing.length === 0 ? summary : `missing ${missing.join(", ")}`;
   record(
     question,
     path,
@@ -329,6 +339,7 @@ function knowledgeNotRun(): void {
   const tools = [
     [questions.find, "search_knowledge"],
     [questions.claim, "inspect_knowledge"],
+    [questions.entity, "inspect_knowledge"],
     [questions.source, "inspect_knowledge"],
     [questions.due, "inspect_knowledge"],
   ] as const;
@@ -340,26 +351,150 @@ function knowledgeNotRun(): void {
   }
 }
 
+/** What a verified claim's answer holds, and why it does not read as one (empty when it does). */
+function verifiedClaim(answer: Answer): { readonly summary: string; readonly problem: string } {
+  const claim = object(answer.value);
+  const verdicts = rows(claim.verdicts);
+  const cells = rows(claim.probes).flatMap((probe) => rows(probe.cells));
+  const located = cells.filter((cell) => cell.locator_id).length;
+  const summary = `status ${String(claim.status)}; ${verdicts.length} verdicts; ${cells.length} probe cells, ${located} with an evidence locator`;
+  if (answer.error) return { summary, problem: "" };
+  if (claim.status !== "verified" || !object(claim.verified).receipt_id)
+    return { summary, problem: `${summary}: not a verified claim with its admission` };
+  if (verdicts.length === 0 || located === 0) return { summary, problem: `${summary}: no verdict or no evidence` };
+  return { summary, problem: "" };
+}
+
+/** Who stated a claim: its own attribution, else the attribution of the claim it restates. */
+async function sourceNameOf(claim: Record<string, unknown>): Promise<string | undefined> {
+  const named = (value: Record<string, unknown>) =>
+    String(value.stated_by ?? value.channel ?? "")
+      .split(";")[0]
+      ?.trim() || undefined;
+  const original = object(object(claim.restatements).restates).claim_id;
+  if (named(claim) || typeof original !== "string") return named(claim);
+  return named(object((await read("get_claim", { claim_id: original })).value));
+}
+
+const factQuery = options["fact-query"] ?? "price";
+
+/** One entity to read: the one named on the command line, else the first entity card for the fact query that lists a current fact. */
+async function entityWithFacts(): Promise<string | undefined> {
+  if (options.entity) return options.entity;
+  const cards = await read("search_knowledge", { query: factQuery, kinds: ["profile"], limit: 5 });
+  for (const hit of rows(object(cards.value).hits)) {
+    if (typeof hit.entity_id !== "string") continue;
+    const card = object((await read("get_entity", { entity_id: hit.entity_id })).value);
+    if (rows(card.facts).length > 0) return hit.entity_id;
+  }
+  return undefined;
+}
+
+interface EntityReads {
+  card(entityId: string): Promise<Answer>;
+  facts(entityId: string, streamKind: string): Promise<Answer>;
+  changes(entityId: string): Promise<Answer>;
+}
+
+/** The card, the evidence behind the first kind of fact on it, and what changed for the entity. */
+async function entityCheck(
+  path: Path,
+  entityId: string | undefined,
+  reads: EntityReads,
+  problem: string,
+): Promise<void> {
+  const wanted =
+    `a card (${cardFields.join(", ")}), the claim, locator and capture behind one kind of its facts, and its changes ` +
+    `up to a knowledge sequence, each under ${budgets.record} tokens`;
+  if (problem || !entityId) {
+    const none = `no entity with a current fact among the entity cards for "${factQuery}" (pass --entity <id>)`;
+    record(questions.entity, path, false, problem || none, wanted, 0);
+    return;
+  }
+  const card = await reads.card(entityId);
+  const cardFacts = rows(object(card.value).facts);
+  const streamKind = String(cardFacts[0]?.stream_kind ?? "");
+  const facts = streamKind ? await reads.facts(entityId, streamKind) : noAnswer;
+  const changes = await reads.changes(entityId);
+  const answers = [card, facts, changes];
+  const failed = answers.find((answer) => answer.error);
+  const missing = [
+    ...cardFields.filter((field) => !(field in object(card.value))),
+    ...factFields.filter((field) => !(field in object(facts.value))),
+    ...changeFields.filter((field) => !(field in object(changes.value))),
+  ];
+  const evidence = rows(object(facts.value).facts);
+  const located = evidence.filter((fact) => fact.claim && fact.locator && fact.capture).length;
+  const reached = Number(object(changes.value).through_seq ?? 0);
+  const sizes = answers.map((answer) => estimateTokens(answer.text));
+  const observed = failed
+    ? failure(failed)
+    : missing.length > 0
+      ? `missing ${missing.join(", ")}`
+      : `${String(object(object(card.value).entity).kind)} card with ${cardFacts.length} facts; ${streamKind}: ` +
+        `${evidence.length} of ${String(object(facts.value).count)} facts shown, ${located} with claim, locator and capture; ` +
+        `${rows(object(changes.value).changes).length} changes shown up to sequence ${reached}`;
+  record(
+    questions.entity,
+    path,
+    !failed && missing.length === 0 && located > 0 && reached > 0 && sizes.every((size) => size <= budgets.record),
+    observed,
+    wanted,
+    sizes.reduce((total, size) => total + size, 0),
+  );
+}
+
 async function knowledgeChecks(): Promise<void> {
   searchCheck("mcp", await tool("search_knowledge", { query, limit: 5 }), toolProblem("search_knowledge"));
   searchCheck("http", await read("search_knowledge", { query, limit: 5 }), "");
 
-  // One claim to read: the one named on the command line, else the first claim the evidence lens returns.
-  const judged = await read("search_knowledge", { query, lenses: ["evidence"], kinds: ["claim"], limit: 5 });
+  // One verified claim to read: the one named on the command line, else the first verified assertion (tier 0) the
+  // evidence lens returns.
+  const verified = { query, lenses: ["evidence"], tiers: [0], kinds: ["claim"], limit: 5 };
+  const judged = await read("search_knowledge", verified);
   const firstClaim = rows(object(judged.value).hits).find((hit) => String(hit.ref).startsWith("claim:"));
   const claimId = options.claim ?? (firstClaim ? String(firstClaim.ref).slice("claim:".length) : undefined);
-  const noClaim = claimId ? "" : `no claim to read: the evidence lens returned none for "${query}" (pass --claim <id>)`;
+  const noClaim = claimId
+    ? ""
+    : `no claim to read: the evidence lens returned no verified assertion for "${query}" (pass --claim <id>)`;
   const claimByTool = claimId ? await tool("inspect_knowledge", { what: "claim", id: claimId }) : noAnswer;
   const claimByHttp = claimId ? await read("get_claim", { claim_id: claimId }) : noAnswer;
-  recordCheck(questions.claim, "mcp", claimByTool, claimFields, toolProblem("inspect_knowledge") || noClaim);
-  recordCheck(questions.claim, "http", claimByHttp, claimFields, noClaim);
+  const byTool = verifiedClaim(claimByTool);
+  const byHttp = verifiedClaim(claimByHttp);
+  recordCheck(
+    questions.claim,
+    "mcp",
+    claimByTool,
+    claimFields,
+    toolProblem("inspect_knowledge") || noClaim || byTool.problem,
+    byTool.summary,
+  );
+  recordCheck(questions.claim, "http", claimByHttp, claimFields, noClaim || byHttp.problem, byHttp.summary);
 
-  // One source to read: the one named on the command line, else whoever stated that claim.
-  const claim = object(claimByHttp.value);
-  const statedBy = String(claim.stated_by ?? claim.channel ?? "")
-    .split(";")[0]
-    ?.trim();
-  const name = options.source ?? (statedBy || undefined);
+  const entityId = await entityWithFacts();
+  await entityCheck(
+    "mcp",
+    entityId,
+    {
+      card: (id) => tool("inspect_knowledge", { what: "entity", id }),
+      facts: (id, stream_kind) => tool("inspect_knowledge", { what: "fact_evidence", id, stream_kind }),
+      changes: (id) => tool("inspect_knowledge", { what: "entity_changes", id }),
+    },
+    toolProblem("inspect_knowledge"),
+  );
+  await entityCheck(
+    "http",
+    entityId,
+    {
+      card: (entity_id) => read("get_entity", { entity_id }),
+      facts: (entity_id, stream_kind) => read("get_fact_evidence", { entity_id, stream_kind }),
+      changes: (entity_id) => read("list_entity_changes", { entity_id }),
+    },
+    "",
+  );
+
+  // One source to read: the one named on the command line, else whoever stated that claim (or the claim it restates).
+  const name = options.source ?? (await sourceNameOf(object(claimByHttp.value)));
   const noSource = name ? "" : "no source to read: get_claim returned no stated_by or channel (pass --source <name>)";
   const sourceByTool = name ? await tool("inspect_knowledge", { what: "source", name }) : noAnswer;
   const sourceByHttp = name ? await read("get_source", { name }) : noAnswer;

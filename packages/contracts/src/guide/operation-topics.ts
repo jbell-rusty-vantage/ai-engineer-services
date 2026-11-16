@@ -5,7 +5,16 @@ import type { GuideTopic } from "../surface.js";
  * operation cannot ship without a place in the guide.
  */
 export const operationTopics: Readonly<Record<GuideTopic, readonly string[]>> = {
-  knowledge: ["search_knowledge", "get_claim", "get_entity", "get_source", "list_due"],
+  knowledge: [
+    "search_knowledge",
+    "get_claim",
+    "get_entity",
+    "get_fact_evidence",
+    "list_entity_changes",
+    "get_summary_evidence",
+    "get_source",
+    "list_due",
+  ],
   schema: [],
   authoring: [
     "create_work",

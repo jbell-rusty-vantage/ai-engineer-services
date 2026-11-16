@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { knowledgeOperations } from "../knowledge.js";
 import { operationCatalog, publicOperations } from "../operations.js";
 import { findSurfaceCommand, guideTopics, surfaceCommands, surfaceJobs, surfaceTools } from "../surface.js";
 import { describeReference, type OperationDescription, type ToolDescription } from "./describe.js";
@@ -158,8 +159,10 @@ describe("describe", () => {
   });
 
   it("describes the knowledge reads without a workspace", () => {
-    for (const name of ["search_knowledge", "get_claim", "get_entity", "get_source", "list_due"]) {
+    for (const name of knowledgeOperations) {
       const description = describeReference(name) as OperationDescription;
+      expect(description.scope, name).toBe("read");
+      expect(description.topic, name).toBe("knowledge");
       expect(description.kind).toBe("read");
       expect(description.output, name).toBeTruthy();
       expect(description.example.payload, name).not.toBeNull();
@@ -176,8 +179,20 @@ describe("describe", () => {
     expect(describeReference("inspect_knowledge") as ToolDescription).toMatchObject({
       tool: "inspect_knowledge",
       topics: ["knowledge"],
-      operations: ["get_claim", "get_entity", "get_source", "list_due"],
+      operations: [
+        "get_claim",
+        "get_entity",
+        "get_fact_evidence",
+        "list_entity_changes",
+        "get_summary_evidence",
+        "get_source",
+        "list_due",
+      ],
     });
+    for (const operation of knowledgeOperations) {
+      const tools = (describeReference(operation) as OperationDescription).tools;
+      expect(tools, operation).toEqual([operation === "search_knowledge" ? "search_knowledge" : "inspect_knowledge"]);
+    }
   });
 
   it("refuses composite and unknown references", () => {

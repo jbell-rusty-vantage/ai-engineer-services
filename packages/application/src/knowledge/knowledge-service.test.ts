@@ -1,9 +1,23 @@
-import type { ClaimView, DueList, JsonObject, KnowledgeSearchResult, SourceView } from "@aiengineer/service-contracts";
+import {
+  type ClaimView,
+  type DueList,
+  describeReference,
+  type EntityChanges,
+  type FactEvidence,
+  type JsonObject,
+  type KnowledgeSearchResult,
+  knowledgeOperations,
+  type OperationDescription,
+  ProductError,
+  type SourceView,
+  type SummaryEvidence,
+} from "@aiengineer/service-contracts";
 import { describe, expect, it } from "vitest";
 import type { CommandCall, DatabaseGateway, ReadCall } from "../database-gateway.js";
-import { productErrorFromPostgrest } from "../database-gateway.js";
+import { PostgrestDatabaseGateway, productErrorFromPostgrest } from "../database-gateway.js";
 import type { ObjectStorage } from "../object-storage.js";
 import { ProductService } from "../product-service.js";
+import type { CallerSession } from "../session.js";
 import { type KnowledgeDatabase, PostgrestKnowledgeDatabase, type RowQuery } from "./knowledge-database.js";
 import { KnowledgeService } from "./knowledge-service.js";
 
@@ -72,7 +86,7 @@ describe("search_knowledge", () => {
       space_slug: "entity_cards",
       channel_scores: { fts: { score: 0.05, rank: 2 } },
     };
-    const database = new FakeKnowledgeDatabase({ search_unified: [searchRow, entityRow] });
+    const database = new FakeKnowledgeDatabase({ search_knowledge: [searchRow, entityRow] });
     const result = (await new KnowledgeService(database).read(session, "search_knowledge", {
       query: "create_react_agent",
     })) as KnowledgeSearchResult;
@@ -101,13 +115,13 @@ describe("search_knowledge", () => {
   });
 
   it("searches only the corpus and evidence lenses, collapsed, and never forwards a workspace", async () => {
-    const database = new FakeKnowledgeDatabase({ search_unified: [] });
+    const database = new FakeKnowledgeDatabase({ search_knowledge: [] });
     const result = (await new KnowledgeService(database).read(session, "search_knowledge", {
       query: "retries",
     })) as KnowledgeSearchResult;
     expect(database.calls).toEqual([
       {
-        name: "search_unified",
+        name: "search_knowledge",
         args: { p_query: "retries", p_lenses: ["corpus", "evidence"], p_limit: 10, p_collapse: true },
       },
     ]);
@@ -116,7 +130,7 @@ describe("search_knowledge", () => {
   });
 
   it("passes the filters the function supports and drops rows of any other lens", async () => {
-    const database = new FakeKnowledgeDatabase({ search_unified: [searchRow, { ...searchRow, lens: "private" }] });
+    const database = new FakeKnowledgeDatabase({ search_knowledge: [searchRow, { ...searchRow, lens: "private" }] });
     const result = (await new KnowledgeService(database).read(session, "search_knowledge", {
       query: "retries",
       lenses: ["evidence"],
@@ -254,18 +268,23 @@ describe("get_claim", () => {
     expect(claim).toMatchObject({ status: "proposed", verified: null, verdicts: [], latest_verdict: null, probes: [] });
   });
 
-  it("is NOT_FOUND for an unknown claim", async () => {
-    await expect(
-      new KnowledgeService(new FakeKnowledgeDatabase()).read(session, "get_claim", { claim_id: claimId }),
-    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  it("reads the views first and asks for the knowledge head only when the claim is missing", async () => {
+    const found = new FakeKnowledgeDatabase({}, claimViews);
+    await new KnowledgeService(found).read(session, "get_claim", { claim_id: claimId });
+    expect(found.calls.map((call) => call.name)).not.toContain("knowledge_head");
+
+    const missing = new FakeKnowledgeDatabase();
+    await expect(new KnowledgeService(missing).read(session, "get_claim", { claim_id: claimId })).rejects.toMatchObject(
+      { code: "NOT_FOUND" },
+    );
+    expect(missing.calls.map((call) => call.name)).toEqual(["knowledge_head"]);
   });
 
-  it("is NOT_AVAILABLE, not empty, when the session has no knowledge tenant context", async () => {
-    const database = new FakeKnowledgeDatabase({}, claimViews, 0);
+  it("is NOT_AVAILABLE, not 'not found', when the session sees no sealed knowledge", async () => {
+    const database = new FakeKnowledgeDatabase({}, {}, 0);
     await expect(
       new KnowledgeService(database).read(session, "get_claim", { claim_id: claimId }),
-    ).rejects.toMatchObject({ code: "NOT_AVAILABLE", detail: expect.stringContaining("tenant context") });
-    expect(database.reads).toEqual([]);
+    ).rejects.toMatchObject({ code: "NOT_AVAILABLE", detail: expect.stringContaining("no sealed knowledge") });
   });
 });
 
@@ -308,7 +327,7 @@ describe("get_entity", () => {
     expect(result.facts).toHaveLength(25);
     expect(result.facts[0]).not.toHaveProperty("k_from");
     expect(result.truncated).toEqual({ facts: 5 });
-    expect(database.calls.map((call) => call.name)).toEqual(["knowledge_head", "entity_card"]);
+    expect(database.calls.map((call) => call.name)).toEqual(["entity_card"]);
   });
 
   it("is NOT_FOUND for an unknown library or entity", async () => {
@@ -317,6 +336,230 @@ describe("get_entity", () => {
     await expect(service.read(session, "get_entity", { entity_id: entityId })).rejects.toMatchObject({
       code: "NOT_FOUND",
     });
+  });
+
+  it("is NOT_AVAILABLE for an entity card when the session sees no sealed knowledge", async () => {
+    const service = new KnowledgeService(new FakeKnowledgeDatabase({}, {}, 0));
+    await expect(service.read(session, "get_entity", { entity_id: entityId })).rejects.toMatchObject({
+      code: "NOT_AVAILABLE",
+    });
+  });
+});
+
+describe("get_fact_evidence", () => {
+  const locatorRow = {
+    segment_id: "segment-1",
+    scope_key: "input_tokens|standard|short|",
+    amount: 2.5,
+    currency: "USD",
+    unit: "USD_per_1M_tokens",
+    status: null,
+    payload: { meter: "input_tokens" },
+    valid_during: '["2026-11-06 02:36:11+00",)',
+    claim_id: claimId,
+    claim_statement: "The model costs USD 2.5 per 1M input tokens as stated by the vendor on 2026-11-06",
+    locator_id: "locator-1",
+    selector_kind: "table",
+    selector: { table: 9, row: 2, column: 1, cell: "$2.50" },
+    normalized_value: "model: Short context input = $2.50",
+    capture_id: "capture-1",
+    captured_at: "2026-11-06T02:36:11+00:00",
+    request_url: "https://example.test/pricing.md",
+    source_url: "https://example.test/pricing.md",
+    document_node_id: "node-1",
+    unit_kind: "price_row",
+    logical_key: "price_row:model|input_tokens",
+  };
+
+  it("returns each fact with its claim, exact locator, capture and document unit", async () => {
+    const database = new FakeKnowledgeDatabase({
+      fact_locators: [locatorRow, { ...locatorRow, segment_id: "segment-2", claim_id: null, locator_id: null }],
+    });
+    const evidence = (await new KnowledgeService(database).read(session, "get_fact_evidence", {
+      entity_id: entityId,
+      stream_kind: "offering_price",
+      scope_key: "input_tokens|standard|short|",
+      limit: 1,
+    })) as FactEvidence;
+    expect(database.calls).toEqual([
+      {
+        name: "fact_locators",
+        args: { p_entity: entityId, p_stream_kind: "offering_price", p_scope_key: "input_tokens|standard|short|" },
+      },
+    ]);
+    expect(evidence).toMatchObject({ entity_id: entityId, stream_kind: "offering_price", count: 2, truncated: true });
+    expect(evidence.facts).toEqual([
+      {
+        segment_id: "segment-1",
+        scope_key: "input_tokens|standard|short|",
+        amount: 2.5,
+        currency: "USD",
+        unit: "USD_per_1M_tokens",
+        status: null,
+        valid_during: '["2026-11-06 02:36:11+00",)',
+        payload: { meter: "input_tokens" },
+        claim: { claim_id: claimId, statement: locatorRow.claim_statement },
+        locator: {
+          locator_id: "locator-1",
+          selector_kind: "table",
+          selector: { table: 9, row: 2, column: 1, cell: "$2.50" },
+          normalized_value: "model: Short context input = $2.50",
+        },
+        capture: {
+          capture_id: "capture-1",
+          captured_at: "2026-11-06T02:36:11+00:00",
+          request_url: "https://example.test/pricing.md",
+          source_url: "https://example.test/pricing.md",
+        },
+        unit_ref: { document_node_id: "node-1", unit_kind: "price_row", logical_key: "price_row:model|input_tokens" },
+      },
+    ]);
+  });
+
+  it("keeps a fact that has no claim or locator yet, and says so with nulls", async () => {
+    const database = new FakeKnowledgeDatabase({
+      fact_locators: [{ ...locatorRow, claim_id: null, locator_id: null, capture_id: null, document_node_id: null }],
+    });
+    const evidence = (await new KnowledgeService(database).read(session, "get_fact_evidence", {
+      entity_id: entityId,
+      stream_kind: "offering_price",
+    })) as FactEvidence;
+    expect(evidence.facts[0]).toMatchObject({ claim: null, locator: null, capture: null, unit_ref: null });
+    expect(evidence.truncated).toBe(false);
+  });
+
+  it("is NOT_FOUND without such facts, and NOT_AVAILABLE when the session sees no sealed knowledge", async () => {
+    const payload = { entity_id: entityId, stream_kind: "offering_price" };
+    await expect(
+      new KnowledgeService(new FakeKnowledgeDatabase({ fact_locators: [] })).read(
+        session,
+        "get_fact_evidence",
+        payload,
+      ),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(
+      new KnowledgeService(new FakeKnowledgeDatabase({}, {}, 0)).read(session, "get_fact_evidence", payload),
+    ).rejects.toMatchObject({ code: "NOT_AVAILABLE" });
+  });
+});
+
+describe("list_entity_changes", () => {
+  const changed = [
+    {
+      change_kind: "opened",
+      item_kind: "relationship",
+      item_id: "rel-1",
+      knowledge_seq: 12,
+      details: { kind: "version_of", from_entity_id: sourceId, to_entity_id: entityId, qualifier: "", properties: {} },
+    },
+    {
+      change_kind: "opened",
+      item_kind: "segment",
+      item_id: "segment-1",
+      knowledge_seq: 40,
+      details: {
+        stream_id: "stream-1",
+        amount: 2.5,
+        currency: "USD",
+        unit: "USD_per_1M_tokens",
+        belief: "accepted",
+        tenant_id: "t",
+        primary_claim_id: claimId,
+        payload: { meter: "input_tokens" },
+      },
+    },
+    { change_kind: "closed", item_kind: "segment", item_id: "segment-0", knowledge_seq: 40, details: { amount: 3 } },
+  ];
+
+  it("lists changes up to the knowledge head, newest first, and returns the sequence it reached", async () => {
+    const database = new FakeKnowledgeDatabase({ what_changed: changed });
+    const changes = (await new KnowledgeService(database).read(session, "list_entity_changes", {
+      entity_id: entityId,
+      limit: 2,
+    })) as EntityChanges;
+    expect(database.calls).toEqual([
+      { name: "knowledge_head", args: {} },
+      { name: "what_changed", args: { p_entity: entityId, p_k1: 0, p_k2: 42 } },
+    ]);
+    expect(changes).toMatchObject({
+      entity_id: entityId,
+      after_seq: 0,
+      through_seq: 42,
+      counts: { "opened relationship": 1, "opened segment": 1, "closed segment": 1 },
+      truncated: true,
+    });
+    expect(changes.changes.map((change) => change.knowledge_seq)).toEqual([40, 40]);
+    expect(changes.changes[0]).toEqual({
+      change_kind: "opened",
+      item_kind: "segment",
+      item_id: "segment-1",
+      knowledge_seq: 40,
+      details: {
+        stream_id: "stream-1",
+        amount: 2.5,
+        currency: "USD",
+        unit: "USD_per_1M_tokens",
+        status: null,
+        valid_during: null,
+        belief: "accepted",
+        ref_entity_id: null,
+        claim_id: claimId,
+        payload: { meter: "input_tokens" },
+      },
+    });
+  });
+
+  it("reads an explicit range without asking for the head, and an unchanged range is an answer", async () => {
+    const database = new FakeKnowledgeDatabase({ what_changed: [] });
+    const changes = (await new KnowledgeService(database).read(session, "list_entity_changes", {
+      entity_id: entityId,
+      after_seq: 40,
+      through_seq: 42,
+    })) as EntityChanges;
+    expect(database.calls[0]).toEqual({ name: "what_changed", args: { p_entity: entityId, p_k1: 40, p_k2: 42 } });
+    expect(changes).toMatchObject({ after_seq: 40, through_seq: 42, changes: [], counts: {}, truncated: false });
+  });
+
+  it("refuses a range that ends before it starts, and is NOT_AVAILABLE when the session sees no sealed knowledge", async () => {
+    await expect(
+      new KnowledgeService(new FakeKnowledgeDatabase()).read(session, "list_entity_changes", {
+        entity_id: entityId,
+        after_seq: 50,
+      }),
+    ).rejects.toMatchObject({ code: "VALIDATION" });
+    for (const payload of [{ entity_id: entityId }, { entity_id: entityId, after_seq: 1, through_seq: 5 }]) {
+      await expect(
+        new KnowledgeService(new FakeKnowledgeDatabase({}, {}, 0)).read(session, "list_entity_changes", payload),
+      ).rejects.toMatchObject({ code: "NOT_AVAILABLE" });
+    }
+  });
+});
+
+describe("get_summary_evidence", () => {
+  it("returns the passages a summary rests on", async () => {
+    const database = new FakeKnowledgeDatabase({
+      summary_evidence: [
+        { node_id: "node-1", chunk_id: "chunk-1", locator_id: "locator-1", start_ms: 1000, end_ms: 9000, extra: "x" },
+        { node_id: "node-2", chunk_id: null, locator_id: null, start_ms: null, end_ms: null },
+      ],
+    });
+    const evidence = (await new KnowledgeService(database).read(session, "get_summary_evidence", {
+      summary_id: entityId,
+      limit: 1,
+    })) as SummaryEvidence;
+    expect(database.calls).toEqual([{ name: "summary_evidence", args: { p_summary: entityId } }]);
+    expect(evidence).toEqual({
+      summary_id: entityId,
+      sources: [{ node_id: "node-1", chunk_id: "chunk-1", locator_id: "locator-1", start_ms: 1000, end_ms: 9000 }],
+      count: 2,
+      truncated: true,
+    });
+  });
+
+  it("is NOT_FOUND for a summary without recorded sources", async () => {
+    await expect(
+      new KnowledgeService(new FakeKnowledgeDatabase()).read(session, "get_summary_evidence", { summary_id: entityId }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });
 
@@ -403,7 +646,6 @@ describe("list_due", () => {
     });
     expect(due).not.toHaveProperty("changes");
     expect(database.calls.map((call) => call.name)).toEqual([
-      "knowledge_head",
       "attention_due",
       "probe_revalidation_due",
       "releases_needing_review",
@@ -431,23 +673,41 @@ describe("list_due", () => {
     );
   });
 
-  it("is NOT_AVAILABLE rather than 'nothing due' without the knowledge tenant context", async () => {
-    const database = new FakeKnowledgeDatabase(functions, {}, 0);
-    await expect(new KnowledgeService(database).read(session, "list_due", {})).rejects.toMatchObject({
+  it("answers 'nothing due' only when the session sees the knowledge base", async () => {
+    const nothing = { attention_due: [], probe_revalidation_due: [], releases_needing_review: [] };
+    const due = (await new KnowledgeService(new FakeKnowledgeDatabase(nothing)).read(
+      session,
+      "list_due",
+      {},
+    )) as DueList;
+    expect(due.counts).toEqual({ attention: 0, probe_revalidation: 0, releases_needing_review: 0 });
+
+    const blind = new FakeKnowledgeDatabase(nothing, {}, 0);
+    await expect(new KnowledgeService(blind).read(session, "list_due", {})).rejects.toMatchObject({
       code: "NOT_AVAILABLE",
+      detail: expect.stringContaining("no sealed knowledge"),
     });
-    expect(database.calls.map((call) => call.name)).toEqual(["knowledge_head"]);
+    expect(blind.calls.map((call) => call.name)).toContain("knowledge_head");
   });
 });
 
+const config = { databaseUrl: "http://db.test", databasePublishableKey: "publishable", databaseSecretKey: "secret" };
+
 class RefusingGateway implements DatabaseGateway {
   readonly reads: ReadCall[] = [];
+  readonly scopes: { clientToken: string | undefined; scope: string }[] = [];
+  constructor(private readonly scopeError?: ProductError) {}
   async command(_session: unknown, _call: CommandCall): Promise<JsonObject> {
     return {};
   }
   async read(_session: unknown, call: ReadCall): Promise<unknown> {
     this.reads.push(call);
     return { ok: true };
+  }
+  async scope(caller: CallerSession, scope: string): Promise<JsonObject> {
+    this.scopes.push({ clientToken: caller.clientToken, scope });
+    if (this.scopeError) throw this.scopeError;
+    return { principalId: "user", clientGrantId: "grant-1", clientKind: "mcp" };
   }
   async worker(): Promise<JsonObject> {
     return {};
@@ -458,7 +718,7 @@ const storage: ObjectStorage = { put: async () => undefined, get: async () => ne
 describe("ProductService knowledge routing", () => {
   it("serves knowledge reads from the knowledge reader, never from api.product_read", async () => {
     const gateway = new RefusingGateway();
-    const knowledge = new FakeKnowledgeDatabase({ search_unified: [searchRow] });
+    const knowledge = new FakeKnowledgeDatabase({ search_knowledge: [searchRow] });
     const service = new ProductService(gateway, storage, new KnowledgeService(knowledge));
     const result = (await service.runRead(session, "search_knowledge", {
       payload: { query: "retries" },
@@ -481,6 +741,36 @@ describe("ProductService knowledge routing", () => {
     expect(knowledge.calls).toEqual([]);
   });
 
+  it("asks the database for the read scope when the request carries a client token, and only then", async () => {
+    const gateway = new RefusingGateway();
+    const knowledge = new FakeKnowledgeDatabase({ search_knowledge: [searchRow] });
+    const service = new ProductService(gateway, storage, new KnowledgeService(knowledge));
+    await service.runRead(session, "search_knowledge", { payload: { query: "retries" } });
+    expect(gateway.scopes).toEqual([]);
+
+    const client = { ...session, clientToken: "aiec_client" };
+    for (const operation of knowledgeOperations) {
+      const payload = describeReference(operation) as OperationDescription;
+      await service.runRead(client, operation, { payload: payload.example.payload ?? {} }).catch(() => undefined);
+    }
+    expect(gateway.scopes).toEqual(knowledgeOperations.map(() => ({ clientToken: "aiec_client", scope: "read" })));
+  });
+
+  it("refuses a knowledge read when the client grant lacks the scope, before reading anything", async () => {
+    const gateway = new RefusingGateway(new ProductError("CLIENT_SCOPE_DENIED", "read"));
+    const knowledge = new FakeKnowledgeDatabase({ search_knowledge: [searchRow] }, claimViews);
+    const service = new ProductService(gateway, storage, new KnowledgeService(knowledge));
+    const client = { ...session, clientToken: "aiec_learn_only" };
+    await expect(service.runRead(client, "get_claim", { payload: { claim_id: claimId } })).rejects.toMatchObject({
+      code: "CLIENT_SCOPE_DENIED",
+    });
+    await expect(service.runRead(client, "list_due", { payload: {} })).rejects.toMatchObject({
+      code: "CLIENT_SCOPE_DENIED",
+    });
+    expect(knowledge.calls).toEqual([]);
+    expect(knowledge.reads).toEqual([]);
+  });
+
   it("answers NOT_AVAILABLE when the deployment has no knowledge reader", async () => {
     const service = new ProductService(new RefusingGateway(), storage);
     await expect(service.runRead(session, "list_due", { payload: {} })).rejects.toMatchObject({
@@ -490,8 +780,6 @@ describe("ProductService knowledge routing", () => {
 });
 
 describe("PostgrestKnowledgeDatabase", () => {
-  const config = { databaseUrl: "http://db.test", databasePublishableKey: "publishable", databaseSecretKey: "secret" };
-
   function recordingFetch(body: unknown, status = 200) {
     const seen: { url?: string; method?: string; headers?: Record<string, string>; body?: unknown } = {};
     const fetchImpl = (async (
@@ -509,14 +797,30 @@ describe("PostgrestKnowledgeDatabase", () => {
 
   it("calls api functions as the caller, never with the service key", async () => {
     const { seen, fetchImpl } = recordingFetch([]);
-    await new PostgrestKnowledgeDatabase(config, fetchImpl).call(session, "search_unified", { p_query: "x" });
+    await new PostgrestKnowledgeDatabase(config, fetchImpl).call(session, "search_knowledge", { p_query: "x" });
     expect(seen).toMatchObject({
-      url: "http://db.test/rest/v1/rpc/search_unified",
+      url: "http://db.test/rest/v1/rpc/search_knowledge",
       method: "POST",
       body: { p_query: "x" },
       headers: { apikey: "publishable", authorization: "Bearer user-token", "content-profile": "api" },
     });
     expect(JSON.stringify(seen.headers)).not.toContain("secret");
+  });
+
+  it("asks api.product_scope as the caller, with the client token the request carried", async () => {
+    const { seen, fetchImpl } = recordingFetch({ principalId: "user", clientGrantId: "grant-1" });
+    const client = { ...session, clientToken: "aiec_client" };
+    await new PostgrestDatabaseGateway(config, fetchImpl).scope(client, "read");
+    expect(seen).toMatchObject({
+      url: "http://db.test/rest/v1/rpc/product_scope",
+      method: "POST",
+      body: { p_scope: "read" },
+      headers: { apikey: "publishable", authorization: "Bearer user-token", "x-aieng-client-token": "aiec_client" },
+    });
+    const denied = recordingFetch({ code: "P0001", message: "CLIENT_SCOPE_DENIED", details: "read" }, 400);
+    await expect(new PostgrestDatabaseGateway(config, denied.fetchImpl).scope(client, "read")).rejects.toMatchObject({
+      code: "CLIENT_SCOPE_DENIED",
+    });
   });
 
   it("reads api views with PostgREST filters", async () => {
@@ -541,7 +845,7 @@ describe("PostgrestKnowledgeDatabase", () => {
   it("reports a function or view the database does not have as NOT_AVAILABLE", async () => {
     const { fetchImpl } = recordingFetch({ code: "PGRST202", message: "Could not find the function" }, 404);
     await expect(
-      new PostgrestKnowledgeDatabase(config, fetchImpl).call(session, "search_unified", { p_query: "x" }),
+      new PostgrestKnowledgeDatabase(config, fetchImpl).call(session, "search_knowledge", { p_query: "x" }),
     ).rejects.toMatchObject({ code: "NOT_AVAILABLE" });
     expect(productErrorFromPostgrest(404, { code: "PGRST205", message: "no relation" }).code).toBe("NOT_AVAILABLE");
     expect(productErrorFromPostgrest(403, { code: "42501", message: "permission denied" }).code).toBe("FORBIDDEN");

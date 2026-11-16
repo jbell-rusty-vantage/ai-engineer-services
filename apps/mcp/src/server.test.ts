@@ -176,6 +176,27 @@ describe("knowledge tools", () => {
     ]);
     await expect(inspectKnowledge.run(context, { what: "claim" })).rejects.toMatchObject({ code: "VALIDATION" });
   });
+
+  it("inspect_knowledge reads the evidence of a fact or a summary and an entity's changes", async () => {
+    const port = new RecordingPort();
+    const context = { port, localFiles: false };
+    await inspectKnowledge.run(context, { what: "fact_evidence", id, stream_kind: "offering_price", limit: 3 });
+    await inspectKnowledge.run(context, { what: "entity_changes", id, after_seq: 0 });
+    await inspectKnowledge.run(context, { what: "entity_changes", id, after_seq: 40, through_seq: 42 });
+    await inspectKnowledge.run(context, { what: "summary_evidence", id });
+    expect(port.reads.map((read) => [read.operation, read.input.payload])).toEqual([
+      ["get_fact_evidence", { entity_id: id, stream_kind: "offering_price", limit: 3 }],
+      ["list_entity_changes", { entity_id: id, after_seq: 0 }],
+      ["list_entity_changes", { entity_id: id, after_seq: 40, through_seq: 42 }],
+      ["get_summary_evidence", { summary_id: id }],
+    ]);
+    await expect(inspectKnowledge.run(context, { what: "fact_evidence", id })).rejects.toMatchObject({
+      code: "VALIDATION",
+    });
+    await expect(inspectKnowledge.run(context, { what: "entity_changes" })).rejects.toMatchObject({
+      code: "VALIDATION",
+    });
+  });
 });
 
 describe("schema tools", () => {

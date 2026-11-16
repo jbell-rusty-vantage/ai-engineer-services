@@ -3,7 +3,7 @@ import type { z } from "zod";
 import type { CallerSession } from "../session.js";
 import { asRows, pick, type Row, smallJson } from "./compact.js";
 import type { KnowledgeDatabase } from "./knowledge-database.js";
-import { requireKnowledgeTenantContext } from "./tenant-context.js";
+import { emptyReadError } from "./tenant-context.js";
 
 export type GetEntityPayload = z.infer<PayloadSchemas["get_entity"]>;
 
@@ -70,8 +70,7 @@ export async function readEntity(
     if (!dossier?.library) throw new ProductError("NOT_FOUND", "library");
     return compactDossier(dossier);
   }
-  await requireKnowledgeTenantContext(database, session, "get_entity");
   const card = await database.call<Row | null>(session, "entity_card", { p_entity: payload.entity_id });
-  if (!card?.entity) throw new ProductError("NOT_FOUND", "entity");
+  if (!card?.entity) throw await emptyReadError(database, session, "get_entity", "entity");
   return compactCard(card);
 }

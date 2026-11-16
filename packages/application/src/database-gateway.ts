@@ -1,4 +1,4 @@
-import type { JsonObject } from "@aiengineer/service-contracts";
+import type { JsonObject, OperationScope } from "@aiengineer/service-contracts";
 import type { ServiceConfig } from "./config.js";
 import { PostgrestTransport } from "./postgrest-transport.js";
 import type { CallerSession } from "./session.js";
@@ -19,10 +19,16 @@ export interface ReadCall {
   readonly payload: JsonObject;
 }
 
-/** The product database layer (`api.product_command`, `api.product_read`, `api.product_worker`). */
+/** The product database layer (`api.product_command`, `api.product_read`, `api.product_scope`, `api.product_worker`). */
 export interface DatabaseGateway {
   command(session: CallerSession, call: CommandCall): Promise<JsonObject>;
   read(session: CallerSession, call: ReadCall): Promise<unknown>;
+  /**
+   * The client-grant check `command` and `read` make inside the database, on its own, for an operation the application
+   * serves outside them: rejects with `CLIENT_GRANT_INVALID` or `CLIENT_SCOPE_DENIED` when the caller's client token
+   * does not allow the scope.
+   */
+  scope(session: CallerSession, scope: OperationScope): Promise<JsonObject>;
   worker(operation: string, payload: JsonObject): Promise<JsonObject>;
 }
 
@@ -54,6 +60,10 @@ export class PostgrestDatabaseGateway implements DatabaseGateway {
       { p_workspace_id: call.workspaceId, p_operation: call.operation, p_payload: call.payload },
       this.transport.callerHeaders(session),
     );
+  }
+
+  scope(session: CallerSession, scope: OperationScope): Promise<JsonObject> {
+    return this.transport.rpc<JsonObject>("product_scope", { p_scope: scope }, this.transport.callerHeaders(session));
   }
 
   worker(operation: string, payload: JsonObject): Promise<JsonObject> {

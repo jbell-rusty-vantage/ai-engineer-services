@@ -372,6 +372,19 @@ export const payloadSchemas = {
   }),
   get_claim: z.strictObject({ claim_id: id }),
   get_entity: z.union([z.strictObject({ entity_id: id }), z.strictObject({ library: nonBlank.max(200) })]),
+  get_fact_evidence: z.strictObject({
+    entity_id: id,
+    stream_kind: z.string().regex(/^[a-z][a-z0-9_]{0,62}$/),
+    scope_key: nonBlank.max(400).optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+  }),
+  list_entity_changes: z.strictObject({
+    entity_id: id,
+    after_seq: z.number().int().min(0).optional(),
+    through_seq: z.number().int().min(1).optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+  }),
+  get_summary_evidence: z.strictObject({ summary_id: id, limit: z.number().int().min(1).max(200).optional() }),
   get_source: z.union([z.strictObject({ source_entity_id: id }), z.strictObject({ name: nonBlank.max(200) })]),
   list_due: z.strictObject({
     as_of: instant.optional(),

@@ -11,6 +11,7 @@ import {
   maxAssetBytes,
   type OperationDefinition,
   type OperationKind,
+  type OperationScope,
   ProductError,
   type ReadInput,
 } from "@aiengineer/service-contracts";
@@ -70,7 +71,8 @@ export class ProductService {
   async runRead(session: CallerSession, operation: string, input: ReadInput): Promise<unknown> {
     const definition = publicOperation(operation, "read");
     const payload = parsePayload(definition, input.payload);
-    if (isKnowledgeOperation(definition.name)) return this.readKnowledge(session, definition.name, payload);
+    if (isKnowledgeOperation(definition.name))
+      return this.readKnowledge(session, definition.name, definition.scope, payload);
     const result = await this.database.read(session, {
       workspaceId: input.workspaceId ?? null,
       operation: definition.name,
@@ -111,10 +113,20 @@ export class ProductService {
     return { artifactId, sha256, sizeBytes: bytes.byteLength };
   }
 
-  /** Knowledge reads go to the `api` views and functions, not to `api.product_read`. */
-  private readKnowledge(session: CallerSession, operation: KnowledgeOperation, payload: JsonObject): Promise<unknown> {
+  /**
+   * Knowledge reads go to the `api` views and functions, not to `api.product_read`, so the client-grant check that
+   * `api.product_read` makes is asked for first: a request that carries a client token needs the operation's catalog
+   * scope. A request without one has nothing to narrow.
+   */
+  private async readKnowledge(
+    session: CallerSession,
+    operation: KnowledgeOperation,
+    scope: OperationScope,
+    payload: JsonObject,
+  ): Promise<unknown> {
     if (!this.knowledge)
       throw new ProductError("NOT_AVAILABLE", `${operation}: this deployment has no knowledge reader`);
+    if (session.clientToken) await this.database.scope(session, scope);
     return this.knowledge.read(session, operation, payload);
   }
 

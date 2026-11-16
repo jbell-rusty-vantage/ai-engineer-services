@@ -3,7 +3,7 @@ import type { z } from "zod";
 import type { CallerSession } from "../session.js";
 import { asRows, pick, type Row, smallJson } from "./compact.js";
 import type { KnowledgeDatabase } from "./knowledge-database.js";
-import { requireKnowledgeTenantContext } from "./tenant-context.js";
+import { requireVisibleKnowledge } from "./tenant-context.js";
 
 export type ListDuePayload = z.infer<PayloadSchemas["list_due"]>;
 
@@ -76,7 +76,6 @@ export async function listDue(
   session: CallerSession,
   payload: ListDuePayload,
 ): Promise<DueList> {
-  await requireKnowledgeTenantContext(database, session, "list_due");
   const limit = payload.limit ?? defaultLimit;
   const at = payload.as_of ? { p_as_of: payload.as_of } : {};
   const call = async (functionName: string, args: Record<string, unknown>) =>
@@ -88,6 +87,9 @@ export async function listDue(
     payload.since ? call("changes_since", { p_since: payload.since }) : undefined,
     payload.release_id ? call("modules_affected_by_release", { p_release: payload.release_id }) : undefined,
   ]);
+  // "Nothing due" is an answer only when the session sees the knowledge base at all.
+  const nothing = [attention, revalidation, reviews, changes ?? [], affected ?? []].every((rows) => rows.length === 0);
+  if (nothing) await requireVisibleKnowledge(database, session, "list_due");
   const head = (rows: readonly Row[], columns: readonly string[]) =>
     rows.slice(0, limit).map((row) => pick(row, columns));
   return {

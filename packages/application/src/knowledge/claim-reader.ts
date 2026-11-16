@@ -1,8 +1,8 @@
-import { type ClaimVerdict, type ClaimView, type ProbeCell, ProductError } from "@aiengineer/service-contracts";
+import type { ClaimVerdict, ClaimView, ProbeCell } from "@aiengineer/service-contracts";
 import type { CallerSession } from "../session.js";
 import { asRows, clip, pick, type Row, smallJson, text } from "./compact.js";
 import type { KnowledgeDatabase } from "./knowledge-database.js";
-import { requireKnowledgeTenantContext } from "./tenant-context.js";
+import { emptyReadError } from "./tenant-context.js";
 
 const maximumProbes = 3;
 const maximumCells = 12;
@@ -104,7 +104,6 @@ export async function readClaim(
   session: CallerSession,
   payload: { readonly claim_id: string },
 ): Promise<ClaimView> {
-  await requireKnowledgeTenantContext(database, session, "get_claim");
   const id = payload.claim_id;
   const byClaim = { claim_id: `eq.${id}` };
   const [candidates, verifiedRows, verdictRows, restatements, conflicts] = await Promise.all([
@@ -123,7 +122,7 @@ export async function readClaim(
     }),
   ]);
   const claim = candidates[0];
-  if (!claim) throw new ProductError("NOT_FOUND", "claim");
+  if (!claim) throw await emptyReadError(database, session, "get_claim", "claim");
   const verified = verifiedRows[0];
   const latest = verdictRows[0];
   const verdicts = verdictsOf(verified, latest);

@@ -87,6 +87,32 @@ describe("aieng knowledge", () => {
     expect(seen.body?.payload).toEqual({ since: "2026-11-01T00:00:00Z", release_id: id });
   });
 
+  it("reads the evidence behind an entity's facts, an entity's changes and a summary's sources", async () => {
+    const seen: { url?: string; body?: { payload?: unknown } } = {};
+    const run = (positionals: string[], options = {}) => runCommand(client(seen), positionals, options);
+    await run(["knowledge", "facts", id], {
+      kind: "offering_price",
+      scope: "input_tokens|standard|short|",
+      limit: "3",
+    });
+    expect(seen.url).toBe("http://api.test/v1/reads/get_fact_evidence");
+    expect(seen.body?.payload).toEqual({
+      entity_id: id,
+      stream_kind: "offering_price",
+      scope_key: "input_tokens|standard|short|",
+      limit: 3,
+    });
+    await run(["knowledge", "changes", id], { after: "0", through: "270" });
+    expect(seen.url).toBe("http://api.test/v1/reads/list_entity_changes");
+    expect(seen.body?.payload).toEqual({ entity_id: id, after_seq: 0, through_seq: 270 });
+    await run(["knowledge", "changes", id]);
+    expect(seen.body?.payload).toEqual({ entity_id: id });
+    await run(["knowledge", "summary", id]);
+    expect(seen.url).toBe("http://api.test/v1/reads/get_summary_evidence");
+    expect(seen.body?.payload).toEqual({ summary_id: id });
+    await expect(run(["knowledge", "facts", id])).rejects.toMatchObject({ code: "VALIDATION" });
+  });
+
   it("refuses a missing argument or an unknown verb before calling the API", async () => {
     const seen: { url?: string } = {};
     await expect(runCommand(client(seen), ["knowledge", "claim"], {})).rejects.toMatchObject({ code: "VALIDATION" });

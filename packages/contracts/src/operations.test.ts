@@ -71,4 +71,27 @@ describe("operation catalog", () => {
     expect(findOperation("get_source", "read")?.payload.safeParse({}).success).toBe(false);
     expect(findOperation("list_due", "read")?.payload.safeParse({}).success).toBe(true);
   });
+
+  it("gives every knowledge read the read scope, the one a client grant needs", () => {
+    for (const name of knowledgeOperations) expect(findOperation(name, "read")?.scope, name).toBe("read");
+  });
+
+  it("reads the evidence of a fact or a summary and an entity's changes by id", () => {
+    const facts = findOperation("get_fact_evidence", "read")?.payload;
+    expect(facts?.safeParse({ entity_id: id, stream_kind: "offering_price" }).success).toBe(true);
+    expect(
+      facts?.safeParse({ entity_id: id, stream_kind: "offering_price", scope_key: "input_tokens|standard", limit: 5 })
+        .success,
+    ).toBe(true);
+    expect(facts?.safeParse({ entity_id: id }).success).toBe(false);
+    expect(facts?.safeParse({ entity_id: id, stream_kind: "price; drop" }).success).toBe(false);
+    const changes = findOperation("list_entity_changes", "read")?.payload;
+    expect(changes?.safeParse({ entity_id: id }).success).toBe(true);
+    expect(changes?.safeParse({ entity_id: id, after_seq: 0, through_seq: 270 }).success).toBe(true);
+    expect(changes?.safeParse({ entity_id: id, after_seq: -1 }).success).toBe(false);
+    expect(changes?.safeParse({ entity_id: id, since: "2026-11-01T00:00:00Z" }).success).toBe(false);
+    const summary = findOperation("get_summary_evidence", "read")?.payload;
+    expect(summary?.safeParse({ summary_id: id }).success).toBe(true);
+    expect(summary?.safeParse({ summary_id: "latest" }).success).toBe(false);
+  });
 });

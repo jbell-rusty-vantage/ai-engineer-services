@@ -118,8 +118,16 @@ export const surfaceTools: readonly SurfaceTool[] = [
     name: "inspect_knowledge",
     title: "Inspect knowledge",
     summary:
-      "Read one claim (verdicts, probes, restatements), an entity card or library dossier, a source's track record, or what is due for review.",
-    operations: ["get_claim", "get_entity", "get_source", "list_due"],
+      "Read one claim, an entity card or library dossier, the evidence of a fact or summary, an entity's changes, a source's track record, or what is due.",
+    operations: [
+      "get_claim",
+      "get_entity",
+      "get_fact_evidence",
+      "list_entity_changes",
+      "get_summary_evidence",
+      "get_source",
+      "list_due",
+    ],
   },
   {
     name: "schema_search",
@@ -239,6 +247,17 @@ export const surfaceCommands: readonly SurfaceCommand[] = [
   },
   { path: ["knowledge", "claim"], arguments: "<claim-id>", jobs: ["read_knowledge"] },
   { path: ["knowledge", "entity"], arguments: "<entity-id> | --library <slug>", jobs: ["read_knowledge"] },
+  {
+    path: ["knowledge", "facts"],
+    arguments: "<entity-id> --kind <stream-kind> [--scope <scope-key>] [--limit <n>]",
+    jobs: ["read_knowledge"],
+  },
+  {
+    path: ["knowledge", "changes"],
+    arguments: "<entity-id> [--after <seq>] [--through <seq>] [--limit <n>]",
+    jobs: ["read_knowledge"],
+  },
+  { path: ["knowledge", "summary"], arguments: "<summary-id> [--limit <n>]", jobs: ["read_knowledge"] },
   { path: ["knowledge", "source"], arguments: "<source-entity-id> | --name <name>", jobs: ["read_knowledge"] },
   {
     path: ["knowledge", "due"],

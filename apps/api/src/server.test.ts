@@ -6,7 +6,7 @@ import type {
   ReadCall,
 } from "@aiengineer/service-application";
 import { ProductService } from "@aiengineer/service-application";
-import { type JsonObject, ProductError, type SchemaPort } from "@aiengineer/service-contracts";
+import { type JsonObject, knowledgeOperations, ProductError, type SchemaPort } from "@aiengineer/service-contracts";
 import { describe, expect, it } from "vitest";
 import { buildApiServer } from "./server.js";
 
@@ -20,6 +20,12 @@ class EchoDatabase implements DatabaseGateway {
   async read(_session: unknown, call: ReadCall): Promise<unknown> {
     this.last = call;
     return [];
+  }
+  readonly scopes: { clientToken: string | undefined; scope: string }[] = [];
+  async scope(session: { clientToken?: string }, scope: string): Promise<JsonObject> {
+    this.scopes.push({ clientToken: session.clientToken, scope });
+    if (session.clientToken === "aiec_learn_only") throw new ProductError("CLIENT_SCOPE_DENIED", scope);
+    return { principalId: "user", clientGrantId: "grant-1", clientKind: "mcp" };
   }
   async worker(): Promise<JsonObject> {
     return { state: "available" };
@@ -214,8 +220,36 @@ describe("knowledge reads", () => {
   it("lists the knowledge reads in the public catalog", async () => {
     const response = await api().app.inject({ method: "GET", url: "/v1/operations" });
     const names = response.json().operations.map((operation: { name: string }) => operation.name);
-    expect(names).toEqual(
-      expect.arrayContaining(["search_knowledge", "get_claim", "get_entity", "get_source", "list_due"]),
-    );
+    expect(names).toEqual(expect.arrayContaining([...knowledgeOperations]));
+  });
+
+  it("checks a client token's read scope before a knowledge read: 403 without it, and no check without a token", async () => {
+    const reads: string[] = [];
+    const knowledge: KnowledgeReader = {
+      read: async (_session, operation) => {
+        reads.push(operation);
+        return { attention: [], probe_revalidation: [], releases_needing_review: [], counts: {} };
+      },
+    };
+    const database = new EchoDatabase();
+    const app = buildApiServer({ service: new ProductService(database, storage, knowledge) });
+    const due = (token?: string) =>
+      app.inject({
+        method: "POST",
+        url: "/v1/reads/list_due",
+        headers: { ...headers, ...(token ? { "x-aieng-client-token": token } : {}) },
+        payload: { payload: {} },
+      });
+    expect((await due()).statusCode).toBe(200);
+    expect(database.scopes).toEqual([]);
+    expect((await due("aiec_read")).statusCode).toBe(200);
+    const denied = await due("aiec_learn_only");
+    expect(denied.statusCode).toBe(403);
+    expect(denied.json()).toMatchObject({ code: "CLIENT_SCOPE_DENIED" });
+    expect(database.scopes).toEqual([
+      { clientToken: "aiec_read", scope: "read" },
+      { clientToken: "aiec_learn_only", scope: "read" },
+    ]);
+    expect(reads).toEqual(["list_due", "list_due"]);
   });
 });

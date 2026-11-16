@@ -4,7 +4,16 @@
  */
 
 /** Operations the application serves from the knowledge read surface instead of `api.product_read`. */
-export const knowledgeOperations = ["search_knowledge", "get_claim", "get_entity", "get_source", "list_due"] as const;
+export const knowledgeOperations = [
+  "search_knowledge",
+  "get_claim",
+  "get_entity",
+  "get_fact_evidence",
+  "list_entity_changes",
+  "get_summary_evidence",
+  "get_source",
+  "list_due",
+] as const;
 export type KnowledgeOperation = (typeof knowledgeOperations)[number];
 
 export function isKnowledgeOperation(name: string): name is KnowledgeOperation {
@@ -101,6 +110,39 @@ export interface ClaimView {
     readonly restates: Readonly<Record<string, unknown>> | null;
   };
   readonly conflicts: readonly Readonly<Record<string, unknown>>[];
+}
+
+/** The current facts of one kind on an entity, each with the claim, exact locator, capture and document unit behind it. */
+export interface FactEvidence {
+  readonly entity_id: string;
+  readonly stream_kind: string;
+  /** One row per fact and supporting locator: `{ segment_id, scope_key, amount, currency, unit, status, payload, valid_during, claim, locator, capture, unit_ref }`. */
+  readonly facts: readonly Readonly<Record<string, unknown>>[];
+  /** Rows before the limit was applied. */
+  readonly count: number;
+  readonly truncated: boolean;
+}
+
+/** What was opened or closed for one entity after `after_seq`, up to and including `through_seq`. */
+export interface EntityChanges {
+  readonly entity_id: string;
+  readonly after_seq: number;
+  /** The knowledge sequence the answer reaches; pass it as `after_seq` next time. */
+  readonly through_seq: number;
+  /** Newest first: `{ change_kind, item_kind, item_id, knowledge_seq, details }`. */
+  readonly changes: readonly Readonly<Record<string, unknown>>[];
+  /** Rows per `<change_kind> <item_kind>`, before the limit was applied. */
+  readonly counts: Readonly<Record<string, number>>;
+  readonly truncated: boolean;
+}
+
+/** The passages a document summary rests on. */
+export interface SummaryEvidence {
+  readonly summary_id: string;
+  /** `{ node_id, chunk_id, locator_id, start_ms, end_ms }`. */
+  readonly sources: readonly Readonly<Record<string, unknown>>[];
+  readonly count: number;
+  readonly truncated: boolean;
 }
 
 export interface SourceView {

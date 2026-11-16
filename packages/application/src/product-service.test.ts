@@ -28,6 +28,10 @@ class FakeDatabase implements DatabaseGateway {
     return call.operation === "get_thread" ? null : { ok: true };
   }
 
+  async scope(): Promise<JsonObject> {
+    return { principalId: "user", clientGrantId: null, clientKind: null };
+  }
+
   async worker(operation: string, payload: JsonObject): Promise<JsonObject> {
     this.workerCalls.push({ operation, payload });
     return {

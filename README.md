@@ -6,7 +6,7 @@ freezing and audit, and this service adds transports, edge validation and server
 
 **Status (2026-11-05): prototype increment 1 (Build 06) plus the Build 07 research operations** (research requests, editable datasets, statements and evidence). Proven against a disposable Supabase lab stack, not deployed.
 
-**Consumer surface (2026-11-15):** knowledge reads (`search_knowledge`, `get_claim`, `get_entity`, `get_source`, `list_due`), schema navigation, a guide and a describe, on every transport (74 public operations, 19 MCP tools). Unit-tested and evaluated without a database; the knowledge reads are not yet proven on the lab stack, and three of them answer `NOT_AVAILABLE` until the database gives signed-in requests a knowledge tenant context.
+**Consumer surface (2026-11-15):** knowledge reads (`search_knowledge`, `get_claim`, `get_entity`, `get_fact_evidence`, `list_entity_changes`, `get_summary_evidence`, `get_source`, `list_due`), schema navigation, a guide and a describe, on every transport (77 public operations, 19 MCP tools). Unit-tested, and the knowledge reads are proven on the disposable lab stack (not deployed): they need database contract migration `20261115130000` (Build 08 D-82), which gives a signed-in request the deployment's knowledge tenant. Against a database without it they answer `NOT_AVAILABLE`, never an empty result. A client grant needs the `read` scope for them.
 See [architecture](docs/ARCHITECTURE.md) for what exists and what does not.
 
 GitHub: [`jbell-rusty-vantage/ai-engineer-services`](https://github.com/jbell-rusty-vantage/ai-engineer-services) (public). Schema authority: [`jbell-rusty-vantage/agent-engineer-db-contract`](https://github.com/jbell-rusty-vantage/agent-engineer-db-contract).

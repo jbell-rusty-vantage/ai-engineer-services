@@ -185,6 +185,24 @@ const rows: readonly Row[] = [
   ],
   ["get_claim", "read", "read", "Read one claim: status, admission, verdicts, probe cells, restatements and conflicts"],
   ["get_entity", "read", "read", "Read one entity's card (facts, relationships, events, sources) or a library dossier"],
+  [
+    "get_fact_evidence",
+    "read",
+    "read",
+    "Read where an entity's current facts of one kind come from: claim, exact locator, capture and source",
+  ],
+  [
+    "list_entity_changes",
+    "read",
+    "read",
+    "List what was opened or closed for one entity between two knowledge sequences: facts, events, relationships",
+  ],
+  [
+    "get_summary_evidence",
+    "read",
+    "read",
+    "Read the passages a document summary rests on: nodes, chunks, locators and timecodes",
+  ],
   ["get_source", "read", "read", "Read one source's latest assessments and the claims behind its track record"],
   [
     "list_due",

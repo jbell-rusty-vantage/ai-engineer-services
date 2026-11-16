@@ -13,7 +13,7 @@ import type { KnowledgeDatabase } from "./knowledge-database.js";
 
 export type SearchKnowledgePayload = z.infer<PayloadSchemas["search_knowledge"]>;
 
-/** The columns of `api.search_unified` this service reads. */
+/** The columns of `api.search_knowledge` this service reads. */
 interface SearchRow {
   readonly vector_item_id: string;
   readonly lens: string;
@@ -78,9 +78,10 @@ function toHit(row: SearchRow): KnowledgeHit {
 }
 
 /**
- * `api.search_unified` over the corpus and evidence lenses. No query embedding is sent, so the full-text and trigram
- * channels rank the hits. The lenses are always passed explicitly: the function's own default includes `ours`, and its
- * `private` lens trusts the workspace ids it is given, so neither is reachable from here.
+ * `api.search_knowledge`: the search a signed-in session may call, over the corpus and evidence lenses only. It has no
+ * workspace parameter and refuses any other lens; `api.search_unified`, which takes the private scope from its caller,
+ * is not executable by a user session (database contract migration 20261115130000). No query embedding is sent, so the
+ * full-text and trigram channels rank the hits.
  */
 export async function searchKnowledge(
   database: KnowledgeDatabase,
@@ -88,7 +89,7 @@ export async function searchKnowledge(
   payload: SearchKnowledgePayload,
 ): Promise<KnowledgeSearchResult> {
   const lenses: readonly string[] = payload.lenses ?? knowledgeLenses;
-  const rows = await database.call<SearchRow[] | null>(session, "search_unified", {
+  const rows = await database.call<SearchRow[] | null>(session, "search_knowledge", {
     p_query: payload.query,
     p_lenses: [...lenses],
     ...(payload.tiers ? { p_tiers: payload.tiers } : {}),

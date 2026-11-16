@@ -23,7 +23,7 @@ export const operationNotes: Readonly<Record<string, OperationNote>> = {
     output:
       "{ query, lenses, hits: [{ ref, kind, title, snippet, score, lens, tier, space, evidence: { signal, verdict, claims } | null, read_more: { operation, payload } | null, entity_id?, document_id?, observed_at? }], note? }",
     example: { query: "structured output retries", lenses: ["evidence"], limit: 5 },
-    pages: ["functions/api/search_unified.md"],
+    pages: ["functions/api/search_knowledge.md", "functions/api/search_unified.md"],
   },
   get_claim: {
     output:
@@ -43,6 +43,23 @@ export const operationNotes: Readonly<Record<string, OperationNote>> = {
       "by entity_id: { kind: 'entity_card', entity, aliases, facts, relationships, events, sources, truncated }; by library: { kind: 'library_dossier', library, releases, claims, open_community_claims, probes, sources, as_of }",
     example: { library: "langgraph" },
     pages: ["functions/api/entity_card.md", "functions/api/library_dossier.md"],
+  },
+  get_fact_evidence: {
+    output:
+      "{ entity_id, stream_kind, facts: [{ segment_id, scope_key, amount, currency, unit, status, payload, valid_during, claim: { claim_id, statement } | null, locator: { locator_id, selector_kind, selector, normalized_value } | null, capture: { capture_id, captured_at, request_url, source_url } | null, unit_ref: { document_node_id, unit_kind, logical_key } | null }], count, truncated }",
+    example: { entity_id: id, stream_kind: "offering_price" },
+    pages: ["functions/api/fact_locators.md"],
+  },
+  list_entity_changes: {
+    output:
+      "{ entity_id, after_seq, through_seq, changes: [{ change_kind: opened | closed, item_kind: segment | event | relationship, item_id, knowledge_seq, details }], counts, truncated }",
+    example: { entity_id: id, after_seq: 0 },
+    pages: ["functions/api/what_changed.md", "functions/api/knowledge_head.md"],
+  },
+  get_summary_evidence: {
+    output: "{ summary_id, sources: [{ node_id, chunk_id, locator_id, start_ms, end_ms }], count, truncated }",
+    example: { summary_id: id },
+    pages: ["functions/api/summary_evidence.md"],
   },
   get_source: {
     output:

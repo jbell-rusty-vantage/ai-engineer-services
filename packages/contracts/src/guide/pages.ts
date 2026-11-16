@@ -47,16 +47,20 @@ export const topicBodies: Readonly<Record<GuideTopic, () => string>> = {
 - For judged statements only, search lenses ["evidence"].
 
 ## Read
-- A hit's read_more names the operation and payload to call next; \`inspect_knowledge\` wraps the four reads below.
+- A hit's read_more names the operation and payload to call next; \`inspect_knowledge\` wraps the reads below.
 - \`get_claim {claim_id}\`: statement, status, who stated it and where, the admission behind a verified status, the current verdict per probe, probe cells with their evidence locators, restatements and kept conflicts. A claim is a fact only when its status is "verified"; a candidate never is.
 - \`get_entity {entity_id}\` is the card (current facts, relationships, events, sources); \`get_entity {library}\` is a library dossier (releases, claims by status, open community claims, probes, ranked sources).
+- \`get_fact_evidence {entity_id, stream_kind}\` says where the card's facts of one kind (a price, a score, a limit) come from: the claim, the exact locator in the captured page, when and from which URL it was captured.
+- \`list_entity_changes {entity_id, after_seq}\` lists the facts, events and relationships opened or closed for an entity after a knowledge sequence, newest first; pass the answer's through_seq as the next after_seq.
+- \`get_summary_evidence {summary_id}\`: the passages (nodes, chunks, locators, timecodes) a document summary rests on.
 - \`get_source {source_entity_id}\` or \`get_source {name}\`: the latest assessment per topic (role, conflict of interest, checked, confirmed and refuted counts, authority score, watch level) and the claims behind the counts. Self-checked claims are shown, not scored.
 
 ## Due
 \`list_due {}\`: attention policies that are due (a trigger event or an elapsed cadence), probes whose latest cell resolved an older library version than the newest release, and releases whose bound claims changed verdict after the release was frozen. Add since for facts, events and units learned after a time, and release_id for our modules affected by a software release.
 
 ## Limits
-- NOT_AVAILABLE from \`get_claim\`, \`get_entity {entity_id}\` or \`list_due\` means the database gives this session no knowledge tenant context yet. Search, the library dossier and \`get_source\` do not need it.
+- NOT_AVAILABLE from a read means this deployment's database shows the session no sealed knowledge (an older database contract, or nothing ingested yet); it is not "not found" and not "nothing due".
+- A client grant needs the read scope for every read here; without it the answer is CLIENT_SCOPE_DENIED.
 - Cite the claim id and its verdict, not a search snippet.`,
 
   schema:
