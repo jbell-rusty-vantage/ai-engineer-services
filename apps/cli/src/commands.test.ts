@@ -1,5 +1,5 @@
 import { AiEngineerClient } from "@aiengineer/service-client";
-import { commandUsage, surfaceCommands } from "@aiengineer/service-contracts";
+import { commandUsage, renderGuide, surfaceCommands } from "@aiengineer/service-contracts";
 import { describe, expect, it } from "vitest";
 import { isReferenceCommand, runCommand, runReferenceCommand, usage } from "./commands.js";
 
@@ -160,6 +160,10 @@ describe("aieng guide and describe", () => {
     expect(runReferenceCommand(["describe", "list_due"])).toMatchObject({ operation: "list_due", kind: "read" });
     expect(() => runReferenceCommand(["describe"])).toThrowError(/VALIDATION/);
     expect(() => runReferenceCommand(["guide", "cooking"])).toThrowError(/NOT_FOUND/);
+    expect(runReferenceCommand(["guide"])).toContain("- content-authoring: ");
+    expect(runReferenceCommand(["guide", "content-authoring"])).toBe(renderGuide("content-authoring").text);
+    expect(runReferenceCommand(["guide", "content-authoring/references/lesson-craft"])).toMatch(/^# Lesson craft/);
+    expect(runReferenceCommand(["guide", "ai-engineer-knowledge-charter"])).toContain("## Source tiers");
   });
 
   it("lists every catalogued command in the usage text and implements each one", async () => {

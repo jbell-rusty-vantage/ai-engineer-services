@@ -12,6 +12,11 @@ export interface OperationNote {
 const id = "0193e3c1-6f5a-7c3e-9a1b-2c3d4e5f6a7b";
 const otherId = "0193e3c1-6f5a-7c3e-9a1b-2c3d4e5f6a7c";
 const textBlock = { key: id, type: "text", content: { markdown: "Why a retry needs an idempotency key." } };
+const evidenceRule = {
+  schema: "aieng.evidence-rule.v2",
+  observables: ["working retry", "explanation"],
+  facet: "independent",
+};
 
 /**
  * Output shapes and examples by operation. Knowledge read outputs are defined by this service
@@ -90,8 +95,51 @@ export const operationNotes: Readonly<Record<string, OperationNote>> = {
       slug: "reliable-tool-calls",
       revision: {
         title: "Reliable tool calls",
-        body: { formatVersion: 2, blocks: [textBlock] },
+        origin: "agent",
+        body: { formatVersion: 2, blocks: [{ ...textBlock, bindings: ["claim-1"] }] },
+        bindings: [
+          { local_key: "claim-1", relation: "supports", target: { kind: "claim", id: otherId }, block_key: id },
+        ],
         parts: [{ occurrence_key: otherId, child_revision_id: id, ordinal: 0 }],
+        outcomes: [
+          {
+            outcome_key: id,
+            statement: "Adds an idempotency key to a retried tool call",
+            bloom_level: "apply",
+            evidence_rule: evidenceRule,
+          },
+        ],
+        requirements: [
+          {
+            requirement_key: otherId,
+            kind: "mandatory_activity",
+            occurrence_key: otherId,
+            rationale: "The activity proves the outcome",
+            options: [
+              { route: "standard", activity_revision_id: id, evidence_rule: evidenceRule, approval_state: "proposed" },
+            ],
+          },
+        ],
+        prerequisites: [{ required_revision_id: otherId, strength: "recommended", rationale: "Tool calling first" }],
+        runtime: [
+          {
+            local_key: "langgraph",
+            kind: "package",
+            ecosystem: "pypi",
+            name: "langgraph",
+            version_spec: ">=1.0,<2",
+            resolved_version: "1.0.2",
+          },
+        ],
+        assertions: [
+          {
+            block_key: id,
+            kind: "claim",
+            statement: "A retry without an idempotency key can apply an effect twice.",
+            support_status: "supported",
+            uses_claim_id: otherId,
+          },
+        ],
       },
     },
   },
@@ -164,7 +212,11 @@ export const operationNotes: Readonly<Record<string, OperationNote>> = {
     output: "[{ label, passageId, revisionId, workKind, locator, snippet, rank, lens, tier, channels }]",
     example: { query: "idempotency keys", limit: 5 },
   },
-  get_lesson_view: { example: { revision_id: id } },
+  get_lesson_view: {
+    output:
+      "any readable revision, whatever its work kind: { revisionId, title, body, blocks: [{ key, type, parent, position }], learnerLayer: [{ workId, kind, revisionId, title, blockKey, anchoredRevisionNo, carriedForward }] }; parts are not followed",
+    example: { revision_id: id },
+  },
   enroll: { output: "{ enrollmentId }", example: { distribution_id: id } },
   adopt_release: { output: "{ adoptionId, sequenceNo }", example: { enrollment_id: id, offer_id: otherId } },
   progress: {
@@ -224,7 +276,11 @@ export const operationNotes: Readonly<Record<string, OperationNote>> = {
     example: { assertion_id: id },
   },
   trace_reverse: { example: { source_revision_ids: [id] } },
-  get_report: { output: "{ revisionId, workId, revisionNo, title, body, ... }", example: { revision_id: id } },
+  get_report: {
+    output:
+      "any readable revision: { revisionId, workId, revisionNo, title, body, blocks, assertions: [{ assertionId, assertionKey, blockKey, kind, statement, supportStatus, support, world }], datasets: [{ localKey, revisionId, workId, revisionNo }] }",
+    example: { revision_id: id },
+  },
   create_dataset: {
     output: "{ workId, revisionId, revisionNo }",
     example: {
@@ -268,6 +324,24 @@ export const operationNotes: Readonly<Record<string, OperationNote>> = {
   preview_removal: { output: "{ removalId, impact, state }" },
   confirm_removal: { output: "{ removalId, purgedRevisions, deletedPassages }" },
   create_connection: { output: "{ connectionId }" },
-  create_thread: { output: "{ threadId }" },
-  append_message: { output: "{ messageId, seq, contextSnapshotId }" },
+  create_thread: {
+    output: "{ threadId }",
+    example: { title: "Review request: Reliable tool calls", purpose: "authoring", visibility: "workspace" },
+  },
+  append_message: {
+    output: "{ messageId, seq, contextSnapshotId }",
+    example: {
+      thread_id: id,
+      role: "assistant",
+      content: { schema: "aieng.message.v1", parts: [{ text: "Submitted for review: module Reliable tool calls." }] },
+      context: {
+        schema: "aieng.context.v1",
+        items: [{ item_key: "revision", reason: "attached", revision_id: otherId }],
+      },
+    },
+  },
+  get_thread: {
+    output: "{ threadId, messages: [{ seq, role, content, surface }] }",
+    example: { thread_id: id },
+  },
 };

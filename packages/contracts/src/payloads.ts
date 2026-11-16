@@ -61,14 +61,167 @@ export const bindingTarget = z.looseObject({
   id,
 });
 
+export const bindingRelations = [
+  "derived_from",
+  "uses",
+  "representation",
+  "source",
+  "supports",
+  "contradicts",
+  "covers",
+  "targets",
+  "derived_from_problem",
+  "has_component",
+  "adapted_from",
+  "links_to",
+  "contains",
+  "evaluates_with",
+  "generated_under",
+  "anchored_to",
+  "scenario_of",
+] as const;
+
+export const bindingRoles = [
+  "original",
+  "transcript",
+  "captions",
+  "thumbnail",
+  "poster",
+  "accessible_fallback",
+  "source",
+  "build",
+  "static_export",
+  "lockfile",
+  "starter",
+  "solution",
+  "hidden_check",
+  "dataset",
+  "environment_spec",
+] as const;
+
 export const revisionBinding = z.looseObject({
-  local_key: nonBlank,
-  relation: nonBlank,
+  local_key: nonBlank.describe("Unique in the revision; a block lists the local keys it uses"),
+  relation: z.enum(bindingRelations).describe("supports or contradicts for a claim; covers a concept; uses software"),
   target: bindingTarget,
-  role: z.string().optional(),
-  block_key: id.optional(),
+  role: z.enum(bindingRoles).nullish().describe("hidden_check and solution are withheld from a release"),
+  block_key: id.optional().describe("The one block this binding belongs to"),
   usage: z.enum(["reference_only", "private_copy", "redistributable", "unknown"]).optional(),
   rights_basis: z.string().optional(),
+});
+
+/** How a learner shows an outcome or satisfies a requirement; the database reads the rule, the edge checks its schema. */
+const evidenceRule = z.looseObject({ schema: z.enum(["aieng.evidence-rule.v1", "aieng.evidence-rule.v2"]) });
+
+/** A child placed in a parent at one exact revision. The occurrence key identifies the placement across revisions. */
+export const revisionPart = z.looseObject({
+  occurrence_key: id,
+  child_revision_id: id,
+  ordinal: z.number().int().min(0).describe("Position; unique in the parent"),
+  role: z.enum(["recommended", "optional"]).optional().describe("Default recommended"),
+});
+
+export const revisionOutcome = z.looseObject({
+  outcome_key: id.describe("A UUID you keep across revisions"),
+  statement: nonBlank.describe("What the learner can do"),
+  bloom_level: z.enum(["remember", "understand", "apply", "analyze", "evaluate", "create"]).nullish(),
+  evidence_rule: evidenceRule.describe("The evidence that shows it"),
+  alignments: z
+    .array(
+      z.looseObject({
+        competency_revision_id: id,
+        facet: z.enum(["independent", "assisted", "agent_directed"]),
+        coverage: z.enum(["full", "partial"]),
+        rationale: nonBlank,
+      }),
+    )
+    .optional(),
+});
+
+export const requirementRoutes = [
+  "standard",
+  "prior_work",
+  "test_out",
+  "alternative",
+  "generated_eligible",
+  "learner_project",
+] as const;
+
+/** One route that satisfies a requirement. `standard` and `test_out` name the activity revision; an agent proposes. */
+export const requirementOption = z.looseObject({
+  route: z.enum(requirementRoutes),
+  activity_revision_id: optionalId,
+  evidence_rule: evidenceRule,
+  approval_state: z.enum(["proposed", "approved"]).describe("approved only by a workspace owner or editor"),
+});
+
+export const revisionRequirement = z.looseObject({
+  requirement_key: id,
+  kind: z.enum(["outcome", "mandatory_activity"]),
+  outcome_key: id.optional().describe("kind outcome: an outcome of this revision"),
+  occurrence_key: id.optional().describe("kind mandatory_activity: a part of this revision"),
+  rationale: nonBlank,
+  options: z.array(requirementOption).optional().describe("The routes that satisfy it"),
+});
+
+export const revisionPrerequisite = z.looseObject({
+  required_revision_id: id,
+  strength: z.enum(["recommended", "required"]),
+  rationale: nonBlank,
+});
+
+export const runtimeRequirementKinds = [
+  "language_runtime",
+  "package",
+  "model",
+  "provider_api",
+  "service",
+  "network_host",
+  "secret_name",
+  "hardware",
+  "renderer_capability",
+] as const;
+
+export const runtimeRequirement = z.looseObject({
+  local_key: z.string().regex(/^[a-z0-9][a-z0-9_.-]{0,62}$/),
+  kind: z.enum(runtimeRequirementKinds),
+  ecosystem: z.string().nullish().describe("Required for package and model, for example pypi or npm"),
+  name: nonBlank.describe("A secret is named, never given"),
+  version_spec: z.string().describe("The version range claimed"),
+  resolved_version: z.string().nullish().describe("The exact version that ran"),
+  phase: z.enum(["build", "run", "test"]).optional().describe("Default run"),
+  optional: z.boolean().optional(),
+});
+
+export const statementKinds = [
+  "finding",
+  "claim",
+  "estimate",
+  "comparison",
+  "recommendation",
+  "assumption",
+  "limitation",
+  "question",
+] as const;
+
+export const statementSupportStatuses = [
+  "supported",
+  "partially_supported",
+  "contradicted",
+  "unsupported",
+  "judgment",
+  "unknown",
+  "undisclosed",
+  "not_applicable",
+] as const;
+
+/** A statement made in a revision, anchored to one of its blocks; `add_support` records the evidence behind it. */
+export const revisionStatement = z.looseObject({
+  assertion_key: id.optional().describe("A UUID you keep across revisions; minted when absent"),
+  block_key: id.optional().describe("The block that states it"),
+  kind: z.enum(statementKinds),
+  statement: nonBlank.max(4000),
+  support_status: z.enum(statementSupportStatuses),
+  uses_claim_id: id.optional().describe("The shared claim it restates"),
 });
 
 export const revisionSpec = z.looseObject({
@@ -76,15 +229,13 @@ export const revisionSpec = z.looseObject({
   body: workBody,
   origin: z.enum(["human", "native_harness", "import", "mc", "agent"]).optional(),
   bindings: z.array(revisionBinding).optional(),
-  parts: z
-    .array(z.looseObject({ occurrence_key: id, child_revision_id: id, ordinal: z.number().int().min(0) }))
-    .optional(),
-  outcomes: z.array(record).optional(),
-  requirements: z.array(record).optional(),
-  prerequisites: z.array(record).optional(),
-  runtime: z.array(record).optional(),
+  parts: z.array(revisionPart).optional(),
+  outcomes: z.array(revisionOutcome).optional(),
+  requirements: z.array(revisionRequirement).optional(),
+  prerequisites: z.array(revisionPrerequisite).optional(),
+  runtime: z.array(runtimeRequirement).optional(),
   /** Statements made in this revision (report findings, estimates, limitations), anchored to its blocks. */
-  assertions: z.array(z.looseObject({ kind: nonBlank, statement: nonBlank, support_status: nonBlank })).optional(),
+  assertions: z.array(revisionStatement).optional(),
 });
 
 export const attemptConditions = z.looseObject({

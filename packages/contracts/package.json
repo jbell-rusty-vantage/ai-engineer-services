@@ -10,7 +10,7 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --clean && tsc -p tsconfig.build.json --emitDeclarationOnly --rootDir src --outDir dist",
+    "build": "tsup src/index.ts --format esm --clean --loader .md=text && tsc -p tsconfig.build.json --emitDeclarationOnly --rootDir src --outDir dist",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { ZodError } from "zod";
 import { startAttempt, submitAttempt } from "./tools/attempt-tools.js";
-import { draftWork, publishBuiltSite } from "./tools/authoring-tools.js";
+import { draftWork, inspectAuthoring, publishBuiltSite, requestReview } from "./tools/authoring-tools.js";
 import { aiengDescribe, aiengGuide } from "./tools/guide-tools.js";
 import { inspectKnowledge, searchKnowledge } from "./tools/knowledge-tools.js";
 import { annotateLessonBlock, checkProgress, readLesson, searchLearning } from "./tools/learning-tools.js";
@@ -29,6 +29,8 @@ const implementations: readonly McpTool[] = [
   annotateLessonBlock,
   checkProgress,
   draftWork,
+  inspectAuthoring,
+  requestReview,
   publishBuiltSite,
   startAttempt,
   submitAttempt,

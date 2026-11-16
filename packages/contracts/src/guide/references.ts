@@ -13,7 +13,8 @@ export interface GuideReferences {
 const codeSpan = /`([^`\n]+)`/g;
 const compoundName = /^[a-z]+(?:_[a-z0-9]+)+$/;
 const callWithArguments = /^([a-z][a-z_0-9]*) \{/;
-const commandWord = /^[a-z][a-z_0-9-]*$/;
+/** A command word; a guide topic may hold slashes (`content-authoring/references/lesson-craft`). */
+const commandWord = /^[a-z][a-z_0-9/-]*$/;
 
 function commandWords(span: string): string[] {
   const words: string[] = [];

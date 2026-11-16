@@ -29,7 +29,7 @@
 | Route | Purpose |
 | --- | --- |
 | `GET /health` | Liveness |
-| `GET /v1/guide`, `GET /v1/guide/:topic` | The start page, or one topic: `{ topic, title, text, topics }` |
+| `GET /v1/guide`, `GET /v1/guide/<topic>` | The start page, one topic, or one skill page (`<skill>` or `<skill>/references/<name>`): `{ topic, title, text, topics }` |
 | `GET /v1/operations` | Public operation catalog (name, kind, scope, summary) |
 | `GET /v1/operations/:name` | One operation's input schema, output shape, example and schema pages (also accepts a tool name) |
 | `GET /v1/schema/search?query=&kind=&limit=` | Schema workspace search: `{ head, query, total, results, next }` |
@@ -105,13 +105,22 @@ workspace are refused; a large JSON file is never returned whole (`search/termin
 One source, `packages/contracts/src/guide`: the judgment is prose in `pages.ts`; the lists of tools, commands,
 operations, work kinds, value statuses and scopes are generated from the catalogs at request time. `renderGuide`
 serves `aieng_guide`, `GET /v1/guide[/topic]` and `aieng guide [topic]`; `describeReference` serves
-`aieng_describe`, `GET /v1/operations/:name` and `aieng describe`. Tests keep the start page under 500 estimated
-tokens and each topic under 1,200, require every public operation to have a topic, and check that every tool,
-operation and CLI command named in a guide page or in the skill exists.
+`aieng_describe`, `GET /v1/operations/:name` and `aieng describe`. Tests keep the start page under 750 estimated
+tokens, each topic under 1,400 and each skill page under 2,800, require every public operation to have a topic, and
+check that every tool, operation and CLI command named in a guide page or in a skill page exists.
+
+**Skills.** `skills/` is the second source the guide serves. Each `SKILL.md` is the topic named after its folder and
+each file under `references/` the topic `<skill>/references/<name>`; the answer is the file's own Markdown. The start
+page lists the method skills with the description from their frontmatter (the router skill `ai-engineer` is served
+but not listed: it is the on-disk copy of the start page). `guide/skill-files.ts` imports each page; the contracts
+build inlines them as text (`tsup --loader .md=text`, the same transform in `vitest.config.ts`), so the API, the CLI
+and both MCP servers carry the pages in `@aiengineer/service-contracts` and read no file at run time. An operational
+topic that overlaps a skill (authoring, knowledge, research) stays the short page of operations and tools and opens
+with a link to the skill.
 
 ## MCP tools
 
-The 19 tools are declared in the surface catalog (`packages/contracts/src/surface.ts`), which gives each its name,
+The 21 tools are declared in the surface catalog (`packages/contracts/src/surface.ts`), which gives each its name,
 title and one-line description; the guide and `aieng_describe` carry the depth.
 
 - Start: `aieng_guide`, `aieng_describe`.
@@ -120,11 +129,18 @@ title and one-line description; the guide and `aieng_describe` carry the depth.
 - Schema: `schema_search`, `schema_get`.
 - Learning: `search_learning`, `read_lesson`, `annotate_lesson_block`, `check_progress`, `start_attempt`,
   `submit_attempt`.
-- Authoring: `draft_work`, `publish_built_site`.
+- Authoring: `draft_work` (a work or a new revision with its body, bindings and structure: parts, outcomes,
+  requirements with their routes, prerequisites, runtime, statements), `inspect_authoring` (the personal workspace,
+  a workspace's works, one work or revision, the exposure preview, a hand-over conversation), `request_review` (the
+  exposure preview, a hand-over note in a workspace conversation tied to the revision, optionally a delivery against a
+  research obligation), `publish_built_site`.
 - Research and datasets: `propose_research`, `inspect_research` (acceptance, dataset, statement trace, source
   usage), `update_dataset` (draft edit or reviewed proposal), `cite_evidence`, `deliver_output`.
 
-Acceptance, delivery decisions and applying dataset changes stay with people: an agent client receives `FORBIDDEN`.
+Acceptance, delivery decisions, human reviews and applying dataset changes stay with people: an agent client receives
+`FORBIDDEN` from the database, and no tool calls those operations (`request_review` records no review). `read_lesson`
+renders any revision the caller can read, whatever the work kind (`get_lesson_view` has no kind check); it does not
+follow parts.
 The local stdio server may read folders (`publish_built_site {directory}`). The remote server accepts only inline
 files and refuses folders. Text answers (the guide, a schema page) are returned as text; everything else as compact
 JSON.
@@ -151,6 +167,28 @@ JSON.
 | S-11 | Schema navigation is file access to the generated workspace and reports its head in every answer |
 | S-12 | The tenant-context check runs only when a tenant-scoped read is empty: it decides between `NOT_AVAILABLE` and `NOT_FOUND` or "nothing due", and costs a found read nothing (2026-11-16) |
 | S-13 | A request that carries a client token passes `api.product_scope` with the operation's catalog scope before any knowledge read (2026-11-16) |
+
+## Decisions (authoring surface, 2026-11-16)
+
+| ID | Decision |
+| --- | --- |
+| S-14 | The skills folder is a guide source: one Markdown text per page, inlined at build time, served unchanged on every transport |
+| S-15 | `draft_work` was extended instead of given a sibling: one job, the same two operations, optional structure fields; the edge schema of `create_work` and `revise_work` describes each structure shape |
+| S-16 | `inspect_authoring` composes the existing reads; it says in every revision answer what no read returns |
+| S-17 | A hand-over is the exposure preview plus a note in a workspace conversation tied to the exact revision (and a delivery when a brief asked for the work); no tool records a review |
+
+## Authoring gaps that need the database contract
+
+- No operation lists the shared workspaces a caller belongs to; only the personal workspace can be asked for.
+- No read returns a saved revision's bindings, parts, outcomes, requirements, prerequisites or runtime requirements
+  (`get_revision` returns the body and the content digest, `get_report` the blocks and statements, `preview_exposure`
+  the revisions and bound items of the closure).
+- No review-request state: the event kinds for a proposed revision and for feedback exist and nothing writes or reads
+  them. A hand-over note is a conversation message, found by its thread id; no read lists threads or review events.
+
+- A statement that names the shared claim it restates is refused on the lab with `NOT_FOUND: cited shared claim`, for a
+  claim the knowledge reads return as verified (consumer evaluation, 2026-11-16). A claim binding on the same block is
+  accepted. The edge schema still describes the field, because the operation accepts it.
 
 ## Not built yet
 

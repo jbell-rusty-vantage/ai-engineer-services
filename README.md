@@ -7,6 +7,7 @@ freezing and audit, and this service adds transports, edge validation and server
 **Status (2026-11-05): prototype increment 1 (Build 06) plus the Build 07 research operations** (research requests, editable datasets, statements and evidence). Proven against a disposable Supabase lab stack, not deployed.
 
 **Consumer surface (2026-11-15):** knowledge reads (`search_knowledge`, `get_claim`, `get_entity`, `get_fact_evidence`, `list_entity_changes`, `get_summary_evidence`, `get_source`, `list_due`), schema navigation, a guide and a describe, on every transport (77 public operations, 19 MCP tools). Unit-tested, and the knowledge reads are proven on the disposable lab stack (not deployed): they need database contract migration `20261115130000` (Build 08 D-82), which gives a signed-in request the deployment's knowledge tenant. Against a database without it they answer `NOT_AVAILABLE`, never an empty result. A client grant needs the `read` scope for them.
+**Authoring surface (2026-11-16):** the guide serves the method skills as topics (`content-authoring` with its five references, `ai-engineer-knowledge-charter`), bundled into the built packages; `draft_work` carries a revision's structure (parts, outcomes, requirements with their routes, prerequisites, runtime, statements); `inspect_authoring` reads works, a revision and the exposure preview; `request_review` leaves a hand-over note for the reviewer (77 public operations, 21 MCP tools). Unit-tested; the lab result of the authoring flow is in the consumer evaluation scorecard. Not deployed.
 See [architecture](docs/ARCHITECTURE.md) for what exists and what does not.
 
 GitHub: [`jbell-rusty-vantage/ai-engineer-services`](https://github.com/jbell-rusty-vantage/ai-engineer-services) (public). Schema authority: [`jbell-rusty-vantage/agent-engineer-db-contract`](https://github.com/jbell-rusty-vantage/agent-engineer-db-contract).
@@ -22,6 +23,8 @@ GitHub: [`jbell-rusty-vantage/ai-engineer-services`](https://github.com/jbell-ru
 | `apps/mcp` | `@aiengineer/service-mcp` | MCP server: local stdio (harness) and remote streamable HTTP (agents without a sandbox) |
 | `apps/cli` | `@aiengineer/service-cli` | `aieng` command line |
 | `skills/ai-engineer` | — | Agent skill: a short router to the guide |
+| `skills/content-authoring` | — | Method skill: verified knowledge into a course, module, lesson, activity and artifact (`SKILL.md`, `references/`); `SOURCES.md` is its provenance record and is not served |
+| `skills/ai-engineer-knowledge-charter` | — | Method skill: what the knowledge base is for, source tiers, repository and paper rules |
 
 ## Where an agent starts
 
@@ -30,6 +33,12 @@ One guide, the same text on every transport: the MCP tool `aieng_guide`, `aieng 
 schema, author content, request research, work with datasets, study and practise) and the tool or command for each.
 `aieng_describe`, `aieng describe <operation>` and `GET /v1/operations/<operation>` give one operation's input
 schema, output shape and an example.
+
+The same guide serves the skills, for an agent that has the MCP server and no files: a skill name is a topic
+(`aieng guide content-authoring`), and so is each reference (`aieng guide content-authoring/references/lesson-craft`,
+`GET /v1/guide/content-authoring/references/lesson-craft`). The start page lists them with their descriptions. The
+Markdown under `skills/` is the one source: `pnpm build` inlines it into `packages/contracts/dist`, so no server reads
+the checkout at run time.
 
 ## Run
 
@@ -74,14 +83,16 @@ Local MCP server for a harness (`.mcp.json` style):
 
 ## Consumer evaluation
 
-A deterministic, read-only scorecard of the questions an agent comes with, asked through the MCP path, the HTTP path
-and the CLI: is the tool there, described and typed; is the answer non-empty and small; does the guide name only
+A deterministic scorecard of the questions an agent comes with, asked through the MCP path, the HTTP path and the
+CLI: is the tool there, described and typed; is the answer non-empty and small; do the guide and the skills name only
 tools, operations and commands that exist. It builds the API and the remote MCP server in process on loopback ports
-and writes `lab-results/consumer-surface.json`.
+and writes `lab-results/consumer-surface.json`. Every check is read-only except the authoring flow (a module with two
+lessons and an activity, a section bound to a verified claim, read back, handed over), which runs only against the
+loopback lab stack as a lab user created for it and removes nothing.
 
 ```bash
 pnpm build
-pnpm eval:consumer-surface --without-database   # the guide, describe and schema checks; knowledge answers not run
+pnpm eval:consumer-surface --without-database   # guide, skills, describe and schema checks; knowledge and authoring flow not run
 pnpm eval:consumer-surface                      # with the lab stack's AIENG_DB_* exported (docs/ENVIRONMENT.md)
 ```
 

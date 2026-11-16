@@ -44,7 +44,7 @@ export const surfaceJobs = [
     id: "author_content",
     label: "Author and release a course, module, lesson, activity or artifact",
     topic: "authoring",
-    tools: ["draft_work", "publish_built_site"],
+    tools: ["draft_work", "inspect_authoring", "request_review", "publish_built_site"],
     operation: "create_work",
   },
   {
@@ -151,7 +151,8 @@ export const surfaceTools: readonly SurfaceTool[] = [
   {
     name: "read_lesson",
     title: "Read a lesson",
-    summary: "Render a lesson revision: its blocks with stable keys and the caller's private notes on them.",
+    summary:
+      "Render a revision you can read (a lesson, module, activity or other work): its blocks with stable keys and your private notes on them.",
     operations: ["get_lesson_view"],
   },
   {
@@ -170,8 +171,29 @@ export const surfaceTools: readonly SurfaceTool[] = [
     name: "draft_work",
     title: "Draft or revise a work",
     summary:
-      "Create a work (course, module, lesson, activity, note, brief and more) or save a new immutable revision of one.",
+      "Create a work (course, module, lesson, activity, brief and more) or save a new revision: body, bindings and structure (parts, outcomes, requirements).",
     operations: ["create_work", "revise_work", "list_works", "get_revision"],
+  },
+  {
+    name: "inspect_authoring",
+    title: "Inspect authoring",
+    summary:
+      "Read authoring state: your personal workspace, a workspace's works, one work or revision, a release exposure preview, or a hand-over conversation.",
+    operations: [
+      "ensure_personal_workspace",
+      "list_works",
+      "get_revision",
+      "get_report",
+      "preview_exposure",
+      "get_thread",
+    ],
+  },
+  {
+    name: "request_review",
+    title: "Request a review",
+    summary:
+      "Hand a revision to a person: preview its exposure, leave your note in a workspace conversation, optionally deliver it for a brief. Records no review.",
+    operations: ["get_revision", "preview_exposure", "create_thread", "append_message", "deliver_output"],
   },
   {
     name: "publish_built_site",
@@ -236,7 +258,7 @@ export interface SurfaceCommand {
 }
 
 export const surfaceCommands: readonly SurfaceCommand[] = [
-  { path: ["guide"], arguments: "[topic]", jobs: [] },
+  { path: ["guide"], arguments: "[topic | skill | skill/references/name]", jobs: [] },
   { path: ["describe"], arguments: "<operation>", jobs: [] },
   { path: ["operations"], arguments: "", jobs: [] },
   {

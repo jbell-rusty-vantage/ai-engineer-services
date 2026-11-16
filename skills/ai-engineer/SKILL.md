@@ -21,7 +21,7 @@ AIENG_API_URL and AIENG_ACCESS_TOKEN). Both act as the signed-in user: you never
 | Read a claim, an entity or a source's track record | `inspect_knowledge` | `aieng knowledge claim <claim-id>`, `aieng knowledge entity <entity-id>`, `aieng knowledge source <source-entity-id>` | knowledge |
 | See what is stale or due for review | `inspect_knowledge` (what: due) | `aieng knowledge due` | knowledge |
 | Find where something lives in the database schema | `schema_search`, `schema_get` | `aieng schema search <query>`, `aieng schema get <page>` | schema |
-| Author and release a course, module, lesson, activity or artifact | `draft_work`, `publish_built_site` | `aieng command create_work`, `aieng upload <file>`, `aieng site publish <directory>` | authoring |
+| Author and release a course, module, lesson, activity or artifact | `draft_work`, `inspect_authoring`, `request_review`, `publish_built_site` | `aieng command create_work`, `aieng upload <file>`, `aieng site publish <directory>` | authoring |
 | Request research and deliver it | `propose_research`, `inspect_research`, `cite_evidence`, `deliver_output` | `aieng command propose_research` | research |
 | Work with datasets | `update_dataset`, `inspect_research`, `cite_evidence` | `aieng command create_dataset` | datasets |
 | Study and practise | `search_learning`, `read_lesson`, `annotate_lesson_block`, `check_progress`, `start_attempt`, `submit_attempt` | `aieng search <query>` | learning |
@@ -29,6 +29,17 @@ AIENG_API_URL and AIENG_ACCESS_TOKEN). Both act as the signed-in user: you never
 
 Every operation is also `aieng read <operation>` or `aieng command <operation>` with a JSON payload (HTTP:
 `POST /v1/reads/<operation>`, `POST /v1/commands/<operation>`); `aieng operations` lists them.
+
+## Method skills
+
+The guide says which tool does a step. Two skills in this folder say how to do the work well, and the guide serves
+them as topics too, for an agent that has no files:
+
+- [content-authoring](../content-authoring/SKILL.md) (`aieng guide content-authoring`): turn verified knowledge into
+  a course, module, lesson, activity and artifact, and hand it over for review.
+- [ai-engineer-knowledge-charter](../ai-engineer-knowledge-charter/SKILL.md)
+  (`aieng guide ai-engineer-knowledge-charter`): what this knowledge base is for, its source tiers, repository rules
+  and paper levels. Its method skill, knowledge-research, ships with Knowledge Services.
 
 ## Working rules
 

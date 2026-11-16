@@ -4,21 +4,24 @@ import {
   estimateTokens,
   guideIndexTopic,
   guideTokenBudgets,
+  guideTopicNames,
   guideTopics,
   type JsonObject,
+  operationCatalog,
   type ProductPort,
   publicOperations,
   type ReadInput,
   renderGuide,
   type SchemaPort,
   scanGuideReferences,
+  skillTopics,
   surfaceTools,
 } from "@aiengineer/service-contracts";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { describe, expect, it } from "vitest";
 import { aiEngineerTools, createAiEngineerMcpServer } from "./server.js";
-import { publishBuiltSite } from "./tools/authoring-tools.js";
+import { draftWork, inspectAuthoring, publishBuiltSite, requestReview } from "./tools/authoring-tools.js";
 import { aiengDescribe, aiengGuide } from "./tools/guide-tools.js";
 import { inspectKnowledge, searchKnowledge } from "./tools/knowledge-tools.js";
 import { citeEvidence, inspectResearch, updateDataset } from "./tools/research-tools.js";
@@ -83,7 +86,7 @@ describe("MCP tools", () => {
     const names = aiEngineerTools.map((tool) => tool.name);
     expect(names).toEqual(surfaceTools.map((tool) => tool.name));
     expect(new Set(names).size).toBe(names.length);
-    expect(names.length).toBeLessThanOrEqual(20);
+    expect(names.length).toBeLessThanOrEqual(23);
     for (const name of names) expect(name).toMatch(/^[a-z]+(_[a-z]+)+$/);
   });
 
@@ -262,7 +265,7 @@ describe("MCP protocol", () => {
       expect(tool.description?.length ?? 0, tool.name).toBeLessThanOrEqual(160);
       expect(tool.inputSchema.type).toBe("object");
     }
-    expect(estimateTokens(JSON.stringify(tools))).toBeLessThan(6000);
+    expect(estimateTokens(JSON.stringify(tools))).toBeLessThan(7500);
     await client.close();
   });
 
@@ -278,5 +281,295 @@ describe("MCP protocol", () => {
     expect(unavailable.isError).toBe(true);
     expect(JSON.parse(unavailable.text)).toMatchObject({ code: "NOT_AVAILABLE", message: "NOT_AVAILABLE" });
     await client.close();
+  });
+});
+
+describe("authoring tools", () => {
+  const ws = "0193e3c1-6f5a-7c3e-9a1b-2c3d4e5f6a70";
+  const work = "0193e3c1-6f5a-7c3e-9a1b-2c3d4e5f6a71";
+  const head = "0193e3c1-6f5a-7c3e-9a1b-2c3d4e5f6a72";
+  const child = "0193e3c1-6f5a-7c3e-9a1b-2c3d4e5f6a73";
+  const key = "0193e3c1-6f5a-7c3e-9a1b-2c3d4e5f6a74";
+  const claim = "0193e3c1-6f5a-7c3e-9a1b-2c3d4e5f6a75";
+  const body = { formatVersion: 2, blocks: [{ key, type: "text", content: { markdown: "A section." } }] };
+
+  /** Answers the authoring reads and commands the way the database does, and records every call. */
+  class AuthoringPort extends RecordingPort {
+    override async command(operation: string, input: CommandInput): Promise<JsonObject> {
+      await super.command(operation, input);
+      if (operation === "ensure_personal_workspace") return { workspaceId: "personal" };
+      if (operation === "create_thread") return { threadId: "thread-1" };
+      if (operation === "append_message") return { messageId: "message-1", seq: 1, contextSnapshotId: "s1" };
+      if (operation === "deliver_output") return { deliveryId: "delivery-1" };
+      return { workId: work, revisionId: head };
+    }
+    override async read(operation: string, input: ReadInput): Promise<unknown> {
+      await super.read(operation, input);
+      if (operation === "list_works") {
+        return [
+          { id: work, kind: "module", slug: "reliable-tool-calls", head },
+          { id: child, kind: "lesson", slug: "lesson-1", head: child },
+        ];
+      }
+      if (operation === "get_revision") {
+        return { id: head, workId: work, revisionNo: 2, title: "Reliable tool calls", body, contentSha256: "digest" };
+      }
+      if (operation === "get_report") {
+        return {
+          revisionId: head,
+          workId: work,
+          revisionNo: 2,
+          title: "Reliable tool calls",
+          body,
+          blocks: [{ key, type: "text", parent: null, position: 0 }],
+          assertions: [
+            { assertionId: claim, blockKey: key, kind: "claim", statement: "s", supportStatus: "supported" },
+          ],
+          datasets: [],
+        };
+      }
+      if (operation === "preview_exposure") {
+        return {
+          root_revision_id: head,
+          ceiling: (input.payload as { ceiling: string }).ceiling,
+          items: [
+            { item_key: `rev:${head}`, kind: "revision", id: head, disposition: "include" },
+            { item_key: "bind:1", kind: "claim", id: claim, disposition: "include" },
+          ],
+          blockers: [],
+          closure_sha256: "c105e",
+        };
+      }
+      if (operation === "get_thread") return { threadId: "thread-1", messages: [] };
+      return [];
+    }
+  }
+
+  const structure = {
+    bindings: [{ local_key: "claim-1", relation: "supports", target: { kind: "claim", id: claim }, block_key: key }],
+    parts: [
+      { child_revision_id: child, occurrence_key: key },
+      { child_revision_id: head, occurrence_key: claim, role: "optional" as const },
+    ],
+    outcomes: [
+      { outcome_key: key, statement: "Adds an idempotency key", evidence_rule: { schema: "aieng.evidence-rule.v2" } },
+    ],
+    requirements: [
+      {
+        requirement_key: claim,
+        kind: "mandatory_activity",
+        occurrence_key: claim,
+        rationale: "The activity proves the outcome",
+        options: [
+          {
+            route: "standard",
+            activity_revision_id: head,
+            evidence_rule: { schema: "aieng.evidence-rule.v2" },
+            approval_state: "proposed",
+          },
+        ],
+      },
+    ],
+    prerequisites: [{ required_revision_id: child, strength: "recommended", rationale: "Tool calling first" }],
+    runtime: [{ local_key: "py", kind: "language_runtime", name: "python", version_spec: ">=3.12" }],
+    statements: [{ kind: "claim", statement: "A retry can apply twice.", support_status: "supported", block_key: key }],
+  };
+
+  it("draft_work creates a work with its structure, in the shape create_work accepts", async () => {
+    const port = new AuthoringPort();
+    await draftWork.run(
+      { port, localFiles: false },
+      {
+        workspace_id: ws,
+        kind: "module",
+        slug: "reliable-tool-calls",
+        title: "Reliable tool calls",
+        blocks: [{ ...body.blocks[0], bindings: ["claim-1"] }],
+        origin: "agent",
+        ...structure,
+      },
+    );
+    const call = port.commands[0];
+    expect(call?.operation).toBe("create_work");
+    const payload = call?.input.payload as { kind: string; revision: Record<string, unknown> };
+    expect(payload.revision).toMatchObject({
+      title: "Reliable tool calls",
+      origin: "agent",
+      bindings: structure.bindings,
+      parts: [
+        { child_revision_id: child, occurrence_key: key, ordinal: 0 },
+        { child_revision_id: head, occurrence_key: claim, ordinal: 1, role: "optional" },
+      ],
+      outcomes: structure.outcomes,
+      requirements: structure.requirements,
+      prerequisites: structure.prerequisites,
+      runtime: structure.runtime,
+      assertions: structure.statements,
+    });
+    expect(payload.revision).not.toHaveProperty("statements");
+    expect(operationCatalog.get("create_work")?.payload.safeParse(payload).success).toBe(true);
+  });
+
+  it("draft_work revises against the work's current head and leaves absent structure out", async () => {
+    const port = new AuthoringPort();
+    await draftWork.run({ port, localFiles: false }, { workspace_id: ws, work_id: work, title: "v2", markdown: "x" });
+    expect(port.commands[0]).toMatchObject({ operation: "revise_work", input: { expectedHead: head } });
+    const revised = port.commands[0]?.input.payload as { revision: Record<string, unknown> } | undefined;
+    const revision = revised?.revision ?? {};
+    expect(Object.keys(revision).sort()).toEqual(["body", "title"]);
+    expect((revision.body as typeof body).blocks[0]?.key).toBe(key);
+    await expect(
+      draftWork.run({ port, localFiles: false }, { workspace_id: ws, work_id: claim, title: "x", markdown: "x" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("inspect_authoring reads the workspace, the works, one work, a revision, an exposure and a thread", async () => {
+    const port = new AuthoringPort();
+    const context = { port, localFiles: false };
+    await expect(inspectAuthoring.run(context, { what: "workspace" })).resolves.toMatchObject({
+      personal_workspace_id: "personal",
+      shared_workspaces: expect.stringContaining("not listable"),
+    });
+    await expect(inspectAuthoring.run(context, { what: "works", workspace_id: ws, kind: "lesson" })).resolves.toEqual({
+      workspace_id: ws,
+      works: [{ id: child, kind: "lesson", slug: "lesson-1", head: child }],
+    });
+    const read = (await inspectAuthoring.run(context, { what: "work", workspace_id: ws, id: work })) as JsonObject;
+    expect(read).toMatchObject({
+      work: { id: work, kind: "module", head },
+      revision_id: head,
+      revision_no: 2,
+      title: "Reliable tool calls",
+      content_sha256: "digest",
+      body,
+      blocks: [{ key, type: "text" }],
+      statements: [{ assertionId: claim, blockKey: key }],
+      not_returned: ["bindings", "parts", "outcomes", "requirements", "prerequisites", "runtime"],
+    });
+    await expect(inspectAuthoring.run(context, { what: "revision", id: head })).resolves.toMatchObject({
+      revision_id: head,
+    });
+    await expect(
+      inspectAuthoring.run(context, { what: "exposure", workspace_id: ws, id: head }),
+    ).resolves.toMatchObject({ ceiling: "workspace", closure_sha256: "c105e" });
+    await inspectAuthoring.run(context, { what: "exposure", workspace_id: ws, id: head, ceiling: "named" });
+    await expect(inspectAuthoring.run(context, { what: "thread", id: key })).resolves.toMatchObject({
+      threadId: "thread-1",
+    });
+    expect(port.reads.map((call) => call.operation)).toEqual([
+      "list_works",
+      "list_works",
+      "get_revision",
+      "get_report",
+      "get_revision",
+      "get_report",
+      "preview_exposure",
+      "preview_exposure",
+      "get_thread",
+    ]);
+    expect(port.reads.at(-2)?.input).toEqual({
+      workspaceId: ws,
+      payload: { root_revision_id: head, ceiling: "named" },
+    });
+    expect(port.commands.map((call) => call.operation)).toEqual(["ensure_personal_workspace"]);
+    for (const what of ["works", "work", "revision", "exposure", "thread"] as const) {
+      await expect(inspectAuthoring.run(context, { what }), what).rejects.toMatchObject({ code: "VALIDATION" });
+    }
+  });
+
+  it("request_review leaves a note tied to the revision and records no review", async () => {
+    const port = new AuthoringPort();
+    const result = await requestReview.run(
+      { port, localFiles: false },
+      { workspace_id: ws, revision_id: head, note: "Submitted for review: module.", ceiling: "named" },
+    );
+    expect(result).toMatchObject({
+      thread_id: "thread-1",
+      message_id: "message-1",
+      revision_id: head,
+      ceiling: "named",
+      closure_sha256: "c105e",
+      items: 2,
+      blockers: [],
+      review: expect.stringContaining("not recorded"),
+    });
+    expect(result).not.toHaveProperty("delivery_id");
+    expect(port.reads.map((call) => call.operation)).toEqual(["get_revision", "preview_exposure"]);
+    expect(port.commands.map((call) => call.operation)).toEqual(["create_thread", "append_message"]);
+    expect(port.commands[0]?.input).toMatchObject({
+      workspaceId: ws,
+      payload: { title: "Review request: Reliable tool calls", purpose: "authoring", visibility: "workspace" },
+    });
+    const message = port.commands[1]?.input.payload as {
+      role: string;
+      content: { schema: string; parts: { text: string }[] };
+      context: { schema: string; items: unknown[] };
+    };
+    expect(message.role).toBe("assistant");
+    expect(message.content.schema).toBe("aieng.message.v1");
+    expect(message.content.parts[0]?.text).toContain("Submitted for review: module.");
+    expect(message.content.parts[0]?.text).toContain(
+      `Revision ${head}. Ceiling named. Closure c105e: 2 items, 0 blockers.`,
+    );
+    expect(message.context).toEqual({
+      schema: "aieng.context.v1",
+      view: "review_request",
+      items: [{ item_key: "revision", reason: "attached", revision_id: head }],
+    });
+  });
+
+  it("request_review delivers against an obligation first and can continue a thread", async () => {
+    const port = new AuthoringPort();
+    const result = await requestReview.run(
+      { port, localFiles: false },
+      { workspace_id: ws, revision_id: head, note: "Second hand-over.", thread_id: key, obligation_id: claim },
+    );
+    expect(result).toMatchObject({ thread_id: key, delivery_id: "delivery-1", ceiling: "workspace" });
+    expect(port.commands.map((call) => call.operation)).toEqual(["deliver_output", "append_message"]);
+    expect(port.commands[0]?.input.payload).toEqual({ obligation_id: claim, revision_id: head });
+    const sent = port.commands[1]?.input.payload as { content: { parts: { text: string }[] } } | undefined;
+    const text = sent?.content.parts[0]?.text;
+    expect(text).toContain("Delivered as delivery-1.");
+  });
+
+  it("no tool reaches the review, freeze and offer operations that people decide", async () => {
+    const port = new AuthoringPort();
+    const context = { port, localFiles: false };
+    await requestReview.run(context, { workspace_id: ws, revision_id: head, note: "n", obligation_id: claim });
+    await draftWork.run(context, { workspace_id: ws, kind: "lesson", title: "t", markdown: "m" });
+    const called = new Set(port.commands.map((call) => call.operation));
+    for (const operation of ["review_revision", "freeze_release", "open_distribution", "offer_release"]) {
+      expect(called.has(operation), operation).toBe(false);
+    }
+  });
+});
+
+describe("skills through the guide tool", () => {
+  it("aieng_guide returns a skill and a reference as the file's Markdown", async () => {
+    const context = { port: new RecordingPort(), localFiles: false };
+    for (const topic of skillTopics) {
+      await expect(aiengGuide.run(context, { topic }), topic).resolves.toBe(renderGuide(topic).text);
+    }
+    await expect(aiengGuide.run(context, { topic: "content-authoring" })).resolves.toContain("# Content authoring");
+    const client = await connect(context);
+    const listed = (await client.listTools()).tools.find((tool) => tool.name === "aieng_guide");
+    const topic = listed?.inputSchema.properties?.topic as { enum?: string[] } | undefined;
+    const topics = topic?.enum ?? [];
+    expect(topics).toEqual([guideIndexTopic, ...guideTopicNames]);
+    expect(topics).toContain("content-authoring/references/lesson-craft");
+    const reference = await callText(client, "aieng_guide", { topic: "content-authoring/references/lesson-craft" });
+    expect(reference.isError).toBe(false);
+    expect(reference.text.startsWith("# Lesson craft")).toBe(true);
+    await client.close();
+  });
+
+  it("names, in every skill page, only tools this server registers and operations the catalog has", () => {
+    const tools = new Set(aiEngineerTools.map((tool) => tool.name));
+    const operations = new Set(publicOperations().map((operation) => operation.name));
+    for (const topic of skillTopics) {
+      for (const name of scanGuideReferences(renderGuide(topic).text).names) {
+        expect(tools.has(name) || operations.has(name), `${topic} names ${name}`).toBe(true);
+      }
+    }
   });
 });

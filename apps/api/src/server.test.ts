@@ -6,7 +6,13 @@ import type {
   ReadCall,
 } from "@aiengineer/service-application";
 import { ProductService } from "@aiengineer/service-application";
-import { type JsonObject, knowledgeOperations, ProductError, type SchemaPort } from "@aiengineer/service-contracts";
+import {
+  type JsonObject,
+  knowledgeOperations,
+  ProductError,
+  renderGuide,
+  type SchemaPort,
+} from "@aiengineer/service-contracts";
 import { describe, expect, it } from "vitest";
 import { buildApiServer } from "./server.js";
 
@@ -127,6 +133,27 @@ describe("reference routes", () => {
     const unknown = await app.inject({ method: "GET", url: "/v1/guide/cooking" });
     expect(unknown.statusCode).toBe(404);
     expect(unknown.json().code).toBe("NOT_FOUND");
+  });
+
+  it("serves a skill and one of its references as guide topics", async () => {
+    const { app } = api();
+    const index = (await app.inject({ method: "GET", url: "/v1/guide" })).json();
+    expect(index.topics).toEqual(expect.arrayContaining(["content-authoring", "ai-engineer-knowledge-charter"]));
+    expect(index.text).toContain("- content-authoring: ");
+    const skill = await app.inject({ method: "GET", url: "/v1/guide/content-authoring" });
+    expect(skill.statusCode).toBe(200);
+    expect(skill.json()).toMatchObject({ topic: "content-authoring", title: "Content authoring" });
+    expect(skill.json().text).toBe(renderGuide("content-authoring").text);
+    const reference = await app.inject({ method: "GET", url: "/v1/guide/content-authoring/references/lesson-craft" });
+    expect(reference.json().topic).toBe("content-authoring/references/lesson-craft");
+    expect(reference.json().text.startsWith("# Lesson craft")).toBe(true);
+    const withFileName = await app.inject({
+      method: "GET",
+      url: "/v1/guide/content-authoring/references/structure.md",
+    });
+    expect(withFileName.json().topic).toBe("content-authoring/references/structure");
+    const sources = await app.inject({ method: "GET", url: "/v1/guide/content-authoring/SOURCES" });
+    expect(sources.statusCode).toBe(404);
   });
 
   it("describes one operation and refuses unknown ones", async () => {

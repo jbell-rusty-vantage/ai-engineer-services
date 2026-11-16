@@ -16,7 +16,9 @@ export const searchLearning = defineTool({
 
 export const readLesson = defineTool({
   name: "read_lesson",
-  input: z.object({ revision_id: id.describe("Lesson revision id") }),
+  input: z.object({
+    revision_id: id.describe("A revision of a lesson, module, activity or other work; parts are not followed"),
+  }),
   run: (context, input) => context.port.read("get_lesson_view", { payload: { revision_id: input.revision_id } }),
 });
 

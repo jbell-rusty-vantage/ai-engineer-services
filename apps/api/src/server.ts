@@ -90,7 +90,8 @@ export function buildApiServer(options: ApiServerOptions): FastifyInstance {
   // Reference routes: the guide, the catalog and schema navigation. They read no user data and need no session.
   app.get("/v1/guide", async () => renderGuide());
 
-  app.get<{ Params: { topic: string } }>("/v1/guide/:topic", async (request) => renderGuide(request.params.topic));
+  // A topic may hold slashes: a skill's reference is `<skill>/references/<name>`.
+  app.get<{ Params: { "*": string } }>("/v1/guide/*", async (request) => renderGuide(request.params["*"]));
 
   app.get("/v1/operations", async () => ({
     operations: publicOperations().map(({ name, kind, scope, summary }) => ({ name, kind, scope, summary })),
