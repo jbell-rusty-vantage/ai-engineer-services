@@ -1,12 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { collectDirectoryFiles, publishSite, type SiteFile } from "@aiengineer/service-client";
-import { type JsonObject, ProductError, workKinds } from "@aiengineer/service-contracts";
+import {
+  type JsonObject,
+  ProductError,
+  reviewCeilings,
+  reviewRequestStatuses,
+  workKinds,
+} from "@aiengineer/service-contracts";
 import { z } from "zod";
 import { defineTool, personalWorkspaceId, type ToolContext } from "./tool-definition.js";
 
 const id = z.guid();
 const records = z.array(z.record(z.string(), z.unknown()));
-const ceilings = ["workspace", "named", "public"] as const;
+const ceilings = reviewCeilings;
 
 interface WorkSummary {
   readonly id: string;
@@ -154,27 +160,60 @@ function needed(value: string | undefined, name: string, what: string): string {
   return value;
 }
 
-/** What no read returns for a saved revision; said in every answer so an absent field is not read as an empty one. */
-const notReturned = ["bindings", "parts", "outcomes", "requirements", "prerequisites", "runtime"] as const;
+/** The saved structure, or why it is not shown: only members of the revision's workspace read it. */
+async function structureOf(context: ToolContext, revisionId: string): Promise<JsonObject> {
+  try {
+    return (await context.port.read("get_revision_structure", { payload: { revision_id: revisionId } })) as JsonObject;
+  } catch (error) {
+    if (error instanceof ProductError && error.code === "NOT_FOUND")
+      return { not_shown: "only members of the revision's workspace read its structure" };
+    throw error;
+  }
+}
 
-/** One revision as the reads give it: the statement read (title, body, blocks, statements) and the content digest. */
+/** The report's statements (with their support counts), each with the shared claim it restates from the structure. */
+function withRestatedClaims(reported: unknown, saved: unknown): JsonObject[] {
+  const statements = Array.isArray(reported) ? (reported as JsonObject[]) : [];
+  const claims = new Map(
+    (Array.isArray(saved) ? (saved as JsonObject[]) : []).map((row) => [row.assertionKey, row.usesClaimId ?? null]),
+  );
+  return statements.map((row) =>
+    claims.has(row.assertionKey) ? { ...row, usesClaimId: claims.get(row.assertionKey) } : row,
+  );
+}
+
+/**
+ * One revision as the reads give it: the statement read (title, body, blocks, statements with support counts), the
+ * content digest, and the saved structure (bindings, parts, outcomes, requirements, prerequisites, runtime).
+ */
 async function revisionView(context: ToolContext, revisionId: string): Promise<JsonObject> {
   const payload = { revision_id: revisionId };
-  const [revision, report] = (await Promise.all([
+  const [revision, report, structure] = (await Promise.all([
     context.port.read("get_revision", { payload }),
     context.port.read("get_report", { payload }),
-  ])) as [JsonObject, JsonObject];
+    structureOf(context, revisionId),
+  ])) as [JsonObject, JsonObject, JsonObject];
   return {
     revision_id: revisionId,
     work_id: report.workId ?? revision.workId ?? null,
     revision_no: report.revisionNo ?? revision.revisionNo ?? null,
     title: report.title ?? revision.title ?? null,
     content_sha256: revision.contentSha256 ?? null,
+    is_head: structure.isHead ?? null,
     body: report.body ?? revision.body ?? null,
     blocks: report.blocks ?? [],
-    statements: report.assertions ?? [],
+    statements: withRestatedClaims(report.assertions, structure.statements),
     datasets: report.datasets ?? [],
-    not_returned: [...notReturned],
+    ...(structure.not_shown
+      ? { structure: structure.not_shown }
+      : {
+          bindings: structure.bindings ?? [],
+          parts: structure.parts ?? [],
+          outcomes: structure.outcomes ?? [],
+          requirements: structure.requirements ?? [],
+          prerequisites: structure.prerequisites ?? [],
+          runtime: structure.runtime ?? [],
+        }),
   };
 }
 
@@ -182,23 +221,35 @@ export const inspectAuthoring = defineTool({
   name: "inspect_authoring",
   input: z.object({
     what: z
-      .enum(["workspace", "works", "work", "revision", "exposure", "thread"])
+      .enum(["workspace", "works", "work", "revision", "exposure", "thread", "reviews"])
       .describe(
-        "workspace = your personal workspace id; work = its head revision; exposure = what a release of a root revision would carry; thread = a hand-over conversation",
+        "workspace = the workspaces you belong to; work = its head revision; exposure = what a release would carry; thread = a hand-over conversation; reviews = review requests and feedback",
       ),
-    workspace_id: id.optional().describe("works, work and exposure"),
-    id: id.optional().describe("work: the work id; revision and exposure: a revision id; thread: the thread id"),
+    workspace_id: id.optional().describe("works, work, exposure and reviews"),
+    id: id
+      .optional()
+      .describe(
+        "work: the work id; revision and exposure: a revision id; thread: the thread id; reviews: one revision",
+      ),
     kind: z.enum(workKinds).optional().describe("works: only this kind"),
     ceiling: z.enum(ceilings).optional().describe("exposure: the intended audience (default workspace)"),
+    status: z.enum(reviewRequestStatuses).optional().describe("reviews: only requests in this status"),
   }),
   run: async (context, input) => {
     switch (input.what) {
       case "workspace":
         return {
           personal_workspace_id: await personalWorkspaceId(context),
-          shared_workspaces:
-            "not listable: no operation returns the shared workspaces you belong to; use the id you were given",
+          workspaces: await context.port.read("list_workspaces", { payload: {} }),
         };
+      case "reviews":
+        return context.port.read("list_reviews", {
+          workspaceId: needed(input.workspace_id, "workspace_id", "reviews"),
+          payload: {
+            ...(input.id ? { revision_id: input.id } : {}),
+            ...(input.status ? { status: input.status } : {}),
+          },
+        });
       case "works": {
         const workspaceId = needed(input.workspace_id, "workspace_id", "works");
         const works = await listWorks(context, workspaceId);
@@ -238,9 +289,9 @@ interface Exposure {
 }
 
 /**
- * The hand-over an author can make with the operations that exist: preview what a release would expose, deliver the
- * revision when it answers an accepted brief, and leave the note for the reviewer in a workspace conversation tied to
- * the exact revision. It records no review and marks nothing: no operation holds a "ready for review" state, and the
+ * The author's hand-over: preview what a release would expose, deliver the revision when it answers an accepted brief,
+ * leave the note for the reviewer in a workspace conversation tied to the exact revision, and mark the revision ready
+ * for review (`mark_ready_for_review`, the author's own act, listable with `list_reviews`). It records no review: the
  * human review (`review_revision`) is deliberately not reachable from any tool.
  */
 export const requestReview = defineTool({
@@ -301,16 +352,24 @@ export const requestReview = defineTool({
         },
       },
     });
+    const request = await context.port.command("mark_ready_for_review", {
+      workspaceId,
+      payload: { revision_id: input.revision_id, ceiling: input.ceiling, note: input.note, thread_id: threadId },
+    });
     return {
+      request_id: request.eventId ?? null,
+      already_requested: request.alreadyRequested === true,
+      status: request.alreadyRequested === true ? "requested earlier: read its status with reviews" : "awaiting_review",
       thread_id: threadId,
       message_id: message.messageId ?? null,
       revision_id: input.revision_id,
       ceiling: input.ceiling,
-      closure_sha256: exposure.closure_sha256 ?? null,
+      closure_sha256: request.closureSha256 ?? exposure.closure_sha256 ?? null,
       items: exposure.items?.length ?? 0,
       blockers,
       ...(delivery ? { delivery_id: delivery.deliveryId ?? null } : {}),
       review: "not recorded: a person records the release review of this closure and ceiling, then freezes and offers",
+      feedback: "inspect_authoring with what reviews lists the status, the reviews people recorded and the replies",
     };
   },
 });

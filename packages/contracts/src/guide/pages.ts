@@ -100,11 +100,11 @@ export const topicBodies: Readonly<Record<GuideTopic, () => string>> = {
 - A page over ${schemaPageByteLimit / 1024} KB is cut on a line boundary and marked truncated. Term definitions are read as \`search/terminology.json#<term>\`.`,
 
   authoring:
-    () => `Everything authored is a work with immutable revisions. Its kind says what it is: ${list(workKinds)}. A course or a module is a work kind, not a separate object. Ids come from results; keys (block, occurrence, outcome, requirement) are UUIDs you mint once and keep across revisions.
+    () => `Everything authored is a work with immutable revisions. Its kind says what it is: ${list(workKinds)}. Ids come from results; keys (block, occurrence, outcome, requirement) are UUIDs you mint once and keep across revisions.
 
 ## Create
-1. Pick a workspace you own or edit: \`inspect_authoring\` with what "workspace" gives your personal one (\`ensure_personal_workspace\`); \`create_workspace\` makes a shared one. No operation lists the shared workspaces you belong to.
-2. Create the leaves first: \`create_work {kind, slug, revision}\` with kind "lesson" or "activity" and revision {title, body: {formatVersion: 2, blocks}} returns workId and revisionId. MCP: \`draft_work\` (markdown for one text block, or blocks).
+1. Pick a workspace you can write: \`inspect_authoring\` with what "workspace" (\`list_workspaces\`, canWrite); \`create_workspace\` makes a shared one.
+2. Create the leaves first: \`create_work {kind, slug, revision}\` with kind "lesson" or "activity" and revision {title, body: {formatVersion: 2, blocks}} returns workId and revisionId. MCP: \`draft_work\` (markdown or blocks).
 3. Create the module, then the course, with revision.parts [{occurrence_key, child_revision_id, ordinal}]: each part is one exact child revision in the same workspace. A course holds track, module, lesson, activity, challenge, project_template; a module the last four; a lesson activity, challenge.
 4. Change a work with \`revise_work {work_id, revision}\` and expectedHead (the head from \`list_works\`); a stale head is CONFLICT. A revised child has a new revision id, so revise its parents to point at it.
 
@@ -112,10 +112,10 @@ export const topicBodies: Readonly<Record<GuideTopic, () => string>> = {
 Revision fields that \`draft_work\` takes too; exact shapes: \`aieng_describe\` for \`create_work\`.
 - outcomes; requirements of kind "outcome" or "mandatory_activity" (a placed part), each with options: the routes that satisfy it, saved "proposed" until a maintainer approves.
 - prerequisites; runtime (the version range claimed and the version that ran).
-- assertions (statements in \`draft_work\`): a statement anchored to one block. Naming the shared claim it restates is refused on the lab today (NOT_FOUND); bind the claim instead.
+- assertions (statements in \`draft_work\`): a statement anchored to one block; uses_claim_id names the shared claim it restates.
 
 ## Blocks and bindings
-- A block is {key, type, content, fallback, bindings}. Only "section" blocks have children. Rich types ("image", "video", "table", "chart", "quiz", "embedded_site" and others) need a text fallback; "text", "callout", "code" and "section" do not.
+- A block is {key, type, content, fallback, bindings}. Only "section" blocks have children. Rich types (image, video, table, chart, quiz, embedded_site and others) need a text fallback.
 - revision.bindings [{local_key, relation, target: {kind, id}, role, block_key, usage}]: block_key anchors a binding to one block, and a block lists the local keys it uses. Target kinds include artifact, file_set, revision, entity (relation "covers" for a concept, "uses" for software) and claim.
 - A file: \`aieng upload\` (HTTP \`POST /v1/assets\`) returns artifactId. A built site: \`publish_built_site\` or \`aieng site publish\` returns fileSetId; show it with an "embedded_site" block bound to it (role "build").
 
@@ -124,12 +124,12 @@ Revision fields that \`draft_work\` takes too; exact shapes: \`aieng_describe\` 
 - Bind the block that states it: {local_key, relation: "supports" or "contradicts", target: {kind: "claim", id}, block_key}. A release remembers its bound claims, so \`list_due\` reports it when a verdict changes. For a report statement or a dataset value use \`add_support\` (MCP \`cite_evidence\`).
 
 ## Read back
-\`inspect_authoring\`: "works" (\`list_works\`), "work" or "revision" (title, body, blocks, statements, digest; \`get_revision\`, \`get_report\`), "exposure". No read returns a saved revision's bindings, parts, outcomes, requirements, prerequisites or runtime; the exposure lists the revisions and bound items a release would carry. \`read_lesson\` (\`get_lesson_view\`) renders any readable revision.
+\`inspect_authoring\`: "works" (\`list_works\`), "work" or "revision" (body, blocks, statements, digest and, for members, the saved bindings, parts, outcomes, requirements, prerequisites, runtime; \`get_revision\`, \`get_report\`, \`get_revision_structure\`), "exposure". \`read_lesson\` (\`get_lesson_view\`) renders any readable revision.
 
 ## Review, freeze, release
 1. \`preview_exposure {root_revision_id, ceiling}\` (ceiling "workspace", "named" or "public") returns closure_sha256, items and blockers.
-2. Hand over with \`request_review\`: the note goes into a workspace conversation tied to the revision (\`create_thread\`, \`append_message\`; replies: \`get_thread\`). No operation marks a revision ready for review. A client grant needs the library scope for the conversation.
-3. A person records \`review_revision {work_id, revision_id, review}\` with review {reviewType: "release_review", decision: "approve", closure_sha256, ceiling} and gets eventId. An agent client gets FORBIDDEN: ask the person.
+2. Hand over with \`request_review\`: a note in a workspace conversation (\`create_thread\`, \`append_message\`; library scope), then \`mark_ready_for_review\` (your act, not a review). Feedback: \`inspect_authoring\` with what "reviews" (\`list_reviews\`): status awaiting_review, reviewed (by a person) or superseded, with reviews and replies.
+3. A person records \`review_revision {work_id, revision_id, review}\` with review {reviewType: "release_review", decision: "approve", closure_sha256, ceiling}. An agent client gets FORBIDDEN: ask the person.
 4. \`freeze_release {root_revision_id, ceiling, approval_event_id}\` returns releaseId. EXPOSURE_BLOCKED lists the item keys that need a decision (decisions [{item_key, disposition}]).
 5. \`open_distribution {root_work_id, channel, title}\`, \`grant_reader\` for an invited channel, then \`offer_release {distribution_id, release_id, terms, approval_event_id}\`.`,
 
@@ -173,7 +173,7 @@ Revision fields that \`draft_work\` takes too; exact shapes: \`aieng_describe\` 
 - Results: \`get_result\`; contest one with \`open_appeal\`. Course maintainers, not agents, finalize results, resolve appeals and decide equivalence.`,
 
   workspace:
-    () => `- Every user has a personal workspace (\`ensure_personal_workspace\`); learner-owned notes and attempts live there. \`create_workspace\` makes a shared one; \`grant_member\` and \`revoke_member\` manage its roles (owner, editor, reader).
+    () => `- Every user has a personal workspace (\`ensure_personal_workspace\`); learner-owned notes and attempts live there. \`list_workspaces\` lists the ones you belong to with your role. \`create_workspace\` makes a shared one; \`grant_member\` and \`revoke_member\` manage its roles (owner, editor, reader).
 - A scoped client grant (\`create_client_grant\`) limits what a CLI, MCP or harness client may do. Send it as the x-aieng-client-token header or set AIENG_CLIENT_TOKEN. Scopes: ${scopes()}.
 - Library controls: \`set_control\` excludes a work from search or context; \`preview_removal\` then \`confirm_removal\` removes a work.
 - Conversations: \`create_thread\`, \`append_message\`, \`get_thread\`.

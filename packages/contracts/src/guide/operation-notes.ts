@@ -160,6 +160,33 @@ export const operationNotes: Readonly<Record<string, OperationNote>> = {
       "{ root_revision_id, ceiling, items: [{ item_key, kind, id, binding_id, disposition }], blockers, closure_sha256 }",
     example: { root_revision_id: id, ceiling: "named" },
   },
+  list_workspaces: {
+    output: "[{ workspaceId, name, kind: personal | shared, role, canWrite, ownedByYou, memberSince }]",
+    example: { writable_only: true },
+    pages: ["ops/list_workspaces.md", "tasks/read-back-saved-revision.md"],
+  },
+  get_revision_structure: {
+    output:
+      "{ revisionId, workId, workKind, workSlug, workspaceId, revisionNo, title, origin, contentSha256, isHead, headRevisionId, bindings: [{ localKey, relation, target: { kind, id }, role, blockKey, usage }], parts: [{ occurrenceKey, ordinal, role, childRevisionId, childKind, childTitle, childIsHead }], outcomes: [{ outcomeKey, statement, bloomLevel, evidenceRule, alignments }], requirements: [{ requirementKey, kind, outcomeKey, occurrenceKey, rationale, options: [{ route, activityRevisionId, approvalState }] }], prerequisites: [{ requiredRevisionId, strength, rationale }], runtime: [{ localKey, kind, name, versionSpec, resolvedVersion }], statements: [{ assertionKey, blockKey, kind, statement, supportStatus, usesClaimId }] }",
+    example: { revision_id: id },
+    pages: ["ops/get_revision_structure.md", "tasks/read-back-saved-revision.md"],
+  },
+  mark_ready_for_review: {
+    output: "{ eventId, workId, revisionId, ceiling, closureSha256, items, blockers, threadId, alreadyRequested }",
+    example: {
+      revision_id: id,
+      ceiling: "workspace",
+      note: "Module 7: two lessons and the activity; every lesson was run.",
+      thread_id: otherId,
+    },
+    pages: ["ops/mark_ready_for_review.md", "tasks/hand-over-for-review.md"],
+  },
+  list_reviews: {
+    output:
+      "{ workspaceId, requests: [{ requestId, revisionId, revisionNo, title, isHead, status: awaiting_review | reviewed | superseded, ceiling, closureSha256, note, threadId, actorKind, reviews: [{ eventId, kind, reviewType, decision, actorKind, byYou, payload }], replies: [{ seq, role, fromPerson, content }] }], reviews: [reviews recorded without a request] }",
+    example: { status: "awaiting_review" },
+    pages: ["ops/list_reviews.md", "tasks/hand-over-for-review.md"],
+  },
   review_revision: {
     output: "{ eventId }",
     example: {

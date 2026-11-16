@@ -130,10 +130,11 @@ title and one-line description; the guide and `aieng_describe` carry the depth.
 - Learning: `search_learning`, `read_lesson`, `annotate_lesson_block`, `check_progress`, `start_attempt`,
   `submit_attempt`.
 - Authoring: `draft_work` (a work or a new revision with its body, bindings and structure: parts, outcomes,
-  requirements with their routes, prerequisites, runtime, statements), `inspect_authoring` (the personal workspace,
-  a workspace's works, one work or revision, the exposure preview, a hand-over conversation), `request_review` (the
-  exposure preview, a hand-over note in a workspace conversation tied to the revision, optionally a delivery against a
-  research obligation), `publish_built_site`.
+  requirements with their routes, prerequisites, runtime, statements), `inspect_authoring` (the workspaces you belong
+  to, a workspace's works, one work or revision with its saved structure, the exposure preview, a hand-over
+  conversation, review requests and feedback), `request_review` (the exposure preview, a hand-over note in a workspace
+  conversation tied to the revision, the ready-for-review mark, optionally a delivery against a research obligation),
+  `publish_built_site`.
 - Research and datasets: `propose_research`, `inspect_research` (acceptance, dataset, statement trace, source
   usage), `update_dataset` (draft edit or reviewed proposal), `cite_evidence`, `deliver_output`.
 
@@ -176,19 +177,32 @@ JSON.
 | S-15 | `draft_work` was extended instead of given a sibling: one job, the same two operations, optional structure fields; the edge schema of `create_work` and `revise_work` describes each structure shape |
 | S-16 | `inspect_authoring` composes the existing reads; it says in every revision answer what no read returns |
 | S-17 | A hand-over is the exposure preview plus a note in a workspace conversation tied to the exact revision (and a delivery when a brief asked for the work); no tool records a review |
+| S-18 | The four authoring reads and the hand-off were added to existing tools (`inspect_authoring`, `request_review`), not as new tools; the database owns them as product operations (contract 0.9.0), and a revision answer carries the saved structure instead of naming what is missing |
+| S-19 | A Markdown schema page asked for with an anchor returns that entry (a table row with its header, or a section); the query catalog page outgrew the page cap at contract 0.7.0 |
 
-## Authoring gaps that need the database contract
+## Authoring read-back and hand-over (database contract 0.9.0, 2026-11-16)
 
-- No operation lists the shared workspaces a caller belongs to; only the personal workspace can be asked for.
-- No read returns a saved revision's bindings, parts, outcomes, requirements, prerequisites or runtime requirements
-  (`get_revision` returns the body and the content digest, `get_report` the blocks and statements, `preview_exposure`
-  the revisions and bound items of the closure).
-- No review-request state: the event kinds for a proposed revision and for feedback exist and nothing writes or reads
-  them. A hand-over note is a conversation message, found by its thread id; no read lists threads or review events.
+Four product operations, dispatched in the database by `product.dispatch_authoring_read` and
+`product.dispatch_authoring_command` through the same `api.product_read` / `api.product_command` (migration
+`20261116140000`); the service adds only catalog rows, edge schemas, guide text, CLI commands and the two tools' use.
 
-- A statement that names the shared claim it restates is refused on the lab with `NOT_FOUND: cited shared claim`, for a
-  claim the knowledge reads return as verified (consumer evaluation, 2026-11-16). A claim binding on the same block is
-  accepted. The edge schema still describes the field, because the operation accepts it.
+| Operation | What it answers | Who sees what |
+| --- | --- | --- |
+| `list_workspaces` | the caller's memberships: role, canWrite, owned | own memberships only; a client grant naming workspaces narrows it |
+| `get_revision_structure` | bindings, parts (with childIsHead), outcomes, requirements with routes, prerequisites, runtime, statements | members of the revision's workspace; others `NOT_FOUND` |
+| `mark_ready_for_review` | a `revision_proposed` event with the closure the database computes, the note and the thread | owner or editor; idempotent per revision and ceiling; records no review |
+| `list_reviews` | requests with status (awaiting_review, reviewed by a person, superseded), reviews since, replies after the note | members (readers included) of the workspace |
+
+`inspect_authoring` uses the first, second and fourth (what "workspace", "work"/"revision", "reviews"); `request_review`
+calls the third after the note. The CLI has `aieng authoring workspaces|structure|ready|reviews`. Status "reviewed"
+counts a person's review only (actor kind human); an agent's own review of a non-human type is listed as an agent's.
+
+A statement that names the shared claim it restates was refused with `NOT_FOUND: cited shared claim` until database
+contract 0.8.0 gave `product_api_owner` a tenant-scoped read policy on `evidence.claim`; it is accepted now, and another
+tenant's claim is refused (suite `authoring_review_reads`).
+
+Still missing: a writer for `feedback` events (a person's feedback is a recorded review or a reply), feedback on an exact
+block, withdrawing a request.
 
 ## Not built yet
 

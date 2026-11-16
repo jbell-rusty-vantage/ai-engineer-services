@@ -73,6 +73,12 @@ beforeAll(async () => {
   await writeFile(join(workspace, "relations", "api", "verified_claims.md"), "# api.verified_claims\n\nview\n");
   await writeFile(join(workspace, "domains", "long.md"), `# Long\n${"| column | type | notes |\n".repeat(1500)}`);
   await writeFile(join(workspace, "search", "large.json"), JSON.stringify({ blob: "x".repeat(schemaPageByteLimit) }));
+  await mkdir(join(workspace, "queries"), { recursive: true });
+  const rows = Array.from({ length: 400 }, (_, n) => `| <a id="q${n}"></a>\`q.${n}\` | ${"row text ".repeat(10)}|`);
+  await writeFile(
+    join(workspace, "queries", "README.md"),
+    `# Named queries\n\nIntro.\n\n| Query | Purpose |\n| --- | --- |\n${rows.join("\n")}\n\n## How to run\n\nRun one.\n\n### Detail\n\nMore.\n\n## After\n\nEnd.\n`,
+  );
   await writeFile(join(root, "outside.md"), "not part of the workspace");
   // A repository beside the contract checkout, to test the default location.
   await mkdir(join(root, "ai-engineer-service", "packages", "application", "dist"), { recursive: true });
@@ -152,6 +158,23 @@ describe("schema pages", () => {
     const term = await schema.getSchemaPage("search/terminology.json#admission");
     expect(term.page).toBe("search/terminology.json#admission");
     expect(JSON.parse(term.text)).toEqual({ definition: "Executor decision that a proposal becomes a fact." });
+  });
+
+  it("reads the entry a Markdown anchor names: a table row with its header, or a section", async () => {
+    const schema = new SchemaWorkspace(workspace);
+    const row = await schema.getSchemaPage("queries/README.md#q7");
+    expect(row).toMatchObject({ page: "queries/README.md#q7", truncated: false });
+    expect(row.text.split("\n")).toEqual([
+      "# Named queries",
+      "",
+      "| Query | Purpose |",
+      "| --- | --- |",
+      expect.stringContaining('id="q7"'),
+    ]);
+    const section = await schema.getSchemaPage("queries/README.md#how-to-run");
+    expect(section.text).toBe("# Named queries\n\n## How to run\n\nRun one.\n\n### Detail\n\nMore.");
+    const whole = await schema.getSchemaPage("queries/README.md#no-such-anchor");
+    expect(whole).toMatchObject({ page: "queries/README.md", truncated: true });
   });
 
   it("cuts a long page on a line boundary and says so", async () => {

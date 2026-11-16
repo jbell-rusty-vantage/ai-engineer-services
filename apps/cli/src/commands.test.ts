@@ -124,6 +124,46 @@ describe("aieng knowledge", () => {
   });
 });
 
+describe("aieng authoring", () => {
+  it("lists workspaces, reads a revision's structure, marks it ready and lists reviews", async () => {
+    const seen: { url?: string; body?: { workspaceId?: unknown; payload?: unknown } } = {};
+    const run = (positionals: string[], options = {}) => runCommand(client(seen), positionals, options);
+    await run(["authoring", "workspaces"], { writable: true });
+    expect(seen.url).toBe("http://api.test/v1/reads/list_workspaces");
+    expect(seen.body?.payload).toEqual({ writable_only: true });
+    await run(["authoring", "structure", id], { workspace: "w1" });
+    expect(seen.url).toBe("http://api.test/v1/reads/get_revision_structure");
+    expect(seen.body).toEqual({ workspaceId: "w1", payload: { revision_id: id } });
+    await run(["authoring", "ready", id], {
+      workspace: "w1",
+      note: "Ready: two lessons.",
+      ceiling: "named",
+      thread: id,
+    });
+    expect(seen.url).toBe("http://api.test/v1/commands/mark_ready_for_review");
+    expect(seen.body).toMatchObject({
+      workspaceId: "w1",
+      payload: { revision_id: id, note: "Ready: two lessons.", ceiling: "named", thread_id: id },
+    });
+    await run(["authoring", "reviews"], { workspace: "w1", revision: id, status: "reviewed", limit: "5" });
+    expect(seen.url).toBe("http://api.test/v1/reads/list_reviews");
+    expect(seen.body).toEqual({ workspaceId: "w1", payload: { revision_id: id, status: "reviewed", limit: 5 } });
+  });
+
+  it("refuses a missing note, workspace or a bad status before calling the API", async () => {
+    const seen: { url?: string } = {};
+    const run = (positionals: string[], options = {}) => runCommand(client(seen), positionals, options);
+    await expect(run(["authoring", "ready", id], { workspace: "w1" })).rejects.toMatchObject({ code: "VALIDATION" });
+    await expect(run(["authoring", "ready", id], { note: "n" })).rejects.toMatchObject({ code: "VALIDATION" });
+    await expect(run(["authoring", "reviews"], { workspace: "w1", status: "done" })).rejects.toMatchObject({
+      code: "VALIDATION",
+    });
+    await expect(run(["authoring", "structure"], {})).rejects.toMatchObject({ code: "VALIDATION" });
+    await expect(run(["authoring", "publish"], {})).rejects.toMatchObject({ code: "VALIDATION" });
+    expect(seen.url).toBeUndefined();
+  });
+});
+
 describe("aieng schema", () => {
   it("searches the schema and prints a page as text with the workspace head", async () => {
     const seen: { url?: string } = {};

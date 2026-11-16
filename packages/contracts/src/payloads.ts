@@ -316,6 +316,12 @@ export const knowledgeContentKinds = [
   "guidance",
 ] as const;
 
+/** The audiences a release closure is computed for. */
+export const reviewCeilings = ["workspace", "named", "public"] as const;
+
+/** The status `list_reviews` derives for a review request; "reviewed" counts a person's review only. */
+export const reviewRequestStatuses = ["awaiting_review", "reviewed", "superseded"] as const;
+
 /** Payload schemas by operation. Operations absent here are validated by the database layer only. */
 export const payloadSchemas = {
   ensure_personal_workspace: z.strictObject({}),
@@ -399,6 +405,23 @@ export const payloadSchemas = {
   progress: z.strictObject({ enrollment_id: id }),
   get_result: z.strictObject({ result_id: id }),
   get_thread: z.strictObject({ thread_id: id }),
+  // Authoring read-back and hand-over (database contract 0.9.0)
+  list_workspaces: z.strictObject({
+    writable_only: z.boolean().optional().describe("Only workspaces where you are an owner or editor"),
+  }),
+  get_revision_structure: z.strictObject({ revision_id: id }),
+  mark_ready_for_review: z.strictObject({
+    revision_id: id.describe("The exact revision a person should review"),
+    note: nonBlank.max(8000).describe("The hand-over: what it is, why it is done, runs, evidence, open edges"),
+    ceiling: z.enum(reviewCeilings).optional().describe("The intended audience (default workspace)"),
+    thread_id: id.optional().describe("The workspace conversation that holds the hand-over"),
+  }),
+  list_reviews: z.strictObject({
+    revision_id: id.optional(),
+    work_id: id.optional(),
+    status: z.enum(reviewRequestStatuses).optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+  }),
   // Build 07: research requests, datasets, statements and support
   propose_research: z.strictObject({ revision_id: id }),
   accept_research: z.strictObject({

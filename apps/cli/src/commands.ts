@@ -17,6 +17,7 @@ import {
   renderGuide,
   surfaceCommands,
 } from "@aiengineer/service-contracts";
+import { runAuthoringCommand } from "./authoring-commands.js";
 import { runKnowledgeCommand } from "./knowledge-commands.js";
 import { argument, numberOption, type Options, oneOf, requiredOption, stringOption } from "./options.js";
 
@@ -82,6 +83,8 @@ export async function runCommand(
       return client.operations();
     case "knowledge":
       return runKnowledgeCommand(client, first, second, options);
+    case "authoring":
+      return runAuthoringCommand(client, first, second, options);
     case "schema":
       return runSchemaCommand(client, first, second, options);
     case "command":

@@ -72,6 +72,27 @@ describe("ProductService", () => {
     ).rejects.toMatchObject({ code: "UNKNOWN_OPERATION" });
   });
 
+  it("answers NOT_AVAILABLE when the database does not have a catalogued operation yet", async () => {
+    class OlderDatabase extends FakeDatabase {
+      override async read(): Promise<unknown> {
+        throw new ProductError("UNKNOWN_OPERATION", "list_workspaces");
+      }
+      override async command(): Promise<JsonObject> {
+        throw new ProductError("UNKNOWN_OPERATION", "mark_ready_for_review");
+      }
+    }
+    const service = new ProductService(new OlderDatabase(), new MemoryStorage());
+    await expect(service.runRead(session, "list_workspaces", { payload: {} })).rejects.toMatchObject({
+      code: "NOT_AVAILABLE",
+    });
+    await expect(
+      service.runCommand(session, "mark_ready_for_review", {
+        workspaceId: metadata.workspaceId,
+        payload: { revision_id: metadata.workspaceId, note: "ready" },
+      }),
+    ).rejects.toMatchObject({ code: "NOT_AVAILABLE" });
+  });
+
   it("validates payloads at the edge", async () => {
     const service = new ProductService(new FakeDatabase(), new MemoryStorage());
     await expect(service.runRead(session, "search", { payload: {} })).rejects.toMatchObject({ code: "VALIDATION" });

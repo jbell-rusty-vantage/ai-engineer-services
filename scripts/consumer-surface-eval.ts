@@ -85,6 +85,10 @@ const questions = {
   restate: "Can a statement in a lesson name the shared claim it restates?",
   authorFlow:
     "How do I create a course module with two lessons and an activity, bind a section to a verified claim, read it back and hand it for review?",
+  workspaces: "Which workspaces can I write to?",
+  saved: "Show me what I saved in this module",
+  handOver: "Hand this to a person for review",
+  feedback: "What feedback did I get?",
 } as const;
 
 /** Answer sizes an agent can afford, in estimated tokens. */
@@ -702,9 +706,48 @@ interface FlowCaller {
   revision(revisionId: string): Promise<Answer>;
   render(revisionId: string): Promise<Answer>;
   exposure(workspaceId: string, revisionId: string): Promise<Answer>;
-  /** Leaves the hand-over note; the answer holds the thread id under `thread_id` or `threadId`. */
+  /**
+   * Leaves the hand-over note and marks the revision ready for review; the answer holds the thread id under
+   * `thread_id` or `threadId` and the request id under `request_id` or `requestId`.
+   */
   handOver(workspaceId: string, revisionId: string, note: string): Promise<Answer>;
   thread(workspaceId: string, threadId: string): Promise<Answer>;
+  /** The workspaces the caller belongs to: `[{ workspaceId, role, canWrite }]` (MCP: under `workspaces`). */
+  workspaces(): Promise<Answer>;
+  /** What a saved revision binds, contains and requires: `bindings`, `parts`, `outcomes`, `requirements`, `runtime`, `statements`. */
+  structure(workspaceId: string, revisionId: string): Promise<Answer>;
+  /** The workspace's review requests for one revision: `{ requests, reviews }`. */
+  reviews(workspaceId: string, revisionId: string): Promise<Answer>;
+}
+
+/** The workspace list of an answer: MCP wraps it with the personal workspace id, HTTP returns the list. */
+function workspaceRows(answer: Answer): Record<string, unknown>[] {
+  return rows(Array.isArray(answer.value) ? answer.value : object(answer.value).workspaces);
+}
+
+/** What the saved structure of the module and its first lesson does not show of what was sent. */
+function structureProblems(
+  module: Record<string, unknown>,
+  lesson: Record<string, unknown>,
+  sent: { children: string[]; occurrences: string[]; outcome: string; section: string; claim: string },
+): string[] {
+  const parts = rows(module.parts);
+  const requirement = rows(module.requirements)[0] ?? {};
+  const binding = rows(lesson.bindings).find((candidate) => candidate.localKey === "claim-1");
+  return [
+    ...(parts.map((part) => part.childRevisionId).join(",") === sent.children.join(",")
+      ? []
+      : ["the parts are not the three children in order"]),
+    ...(parts.every((part) => part.childIsHead === true) ? [] : ["a part is not its child's head"]),
+    ...(rows(module.outcomes)[0]?.outcomeKey === sent.outcome ? [] : ["the outcome is missing"]),
+    ...(requirement.occurrenceKey === sent.occurrences[2] && rows(requirement.options)[0]?.route === "standard"
+      ? []
+      : ["the requirement does not name the activity's part and its route"]),
+    ...(rows(module.runtime)[0]?.name === "python" ? [] : ["the runtime requirement is missing"]),
+    ...(object(binding?.target).id === sent.claim && binding?.blockKey === sent.section
+      ? []
+      : ["the lesson's claim binding is missing or not anchored to its section"]),
+  ];
 }
 
 interface VerifiedClaim {
@@ -742,6 +785,17 @@ async function authorModule(caller: FlowCaller, workspaceId: string, claim: Veri
     sizes.push(estimateTokens(resolved.text));
     return answered(resolved, name);
   };
+  // Which workspaces can I write to: the one this path authors in must be listed as writable.
+  const listedWorkspaces = await caller.workspaces();
+  sizes.push(estimateTokens(listedWorkspaces.text));
+  const writable = workspaceRows(listedWorkspaces).filter((row) => row.canWrite === true);
+  const workspacesObserved = listedWorkspaces.error
+    ? `refused: ${failure(listedWorkspaces)}`
+    : `${workspaceRows(listedWorkspaces).length} workspaces listed, ${writable.length} writable; ` +
+      (writable.some((row) => row.workspaceId === workspaceId)
+        ? "the one authored in is listed as writable"
+        : "the one authored in is NOT listed as writable");
+  const workspacesPassed = !listedWorkspaces.error && writable.some((row) => row.workspaceId === workspaceId);
   const section = crypto.randomUUID();
   const text = (markdown: string) => ({ key: crypto.randomUUID(), type: "text", content: { markdown } });
   const lessonOne = await step(
@@ -865,6 +919,37 @@ async function authorModule(caller: FlowCaller, workspaceId: string, claim: Veri
   if (!JSON.stringify(thread.messages ?? []).includes("Submitted for review"))
     throw new FlowStop("the hand-over note is not in the thread");
 
+  // Show me what I saved: the module's and the lesson's structure as the database holds it.
+  const savedModule = await caller.structure(workspaceId, moduleRevision);
+  const savedLesson = await caller.structure(workspaceId, children[0] ?? "");
+  const savedTokens = estimateTokens(savedModule.text) + estimateTokens(savedLesson.text);
+  const savedProblems =
+    savedModule.error || savedLesson.error
+      ? [`refused: ${failure(savedModule.error ? savedModule : savedLesson)}`]
+      : structureProblems(object(savedModule.value), object(savedLesson.value), {
+          children,
+          occurrences,
+          outcome,
+          section,
+          claim: claim.id,
+        });
+
+  // Hand this to a person: the hand-over is a listable review request awaiting a person, with the exposure's closure.
+  const requestId = String(handed.request_id ?? handed.requestId ?? "");
+  const listedReviews = await caller.reviews(workspaceId, moduleRevision);
+  const request = rows(object(listedReviews.value).requests).find((row) => row.requestId === requestId);
+  const handOverProblems = listedReviews.error
+    ? [`refused: ${failure(listedReviews)}`]
+    : [
+        ...(requestId ? [] : ["the hand-over returned no request id"]),
+        ...(request ? [] : ["the request is not listed"]),
+        ...(request && request.status !== "awaiting_review" ? [`status ${String(request.status)}`] : []),
+        ...(request && request.threadId !== threadId ? ["the request does not name the hand-over thread"] : []),
+        ...(request && request.closureSha256 !== exposure.closure_sha256
+          ? ["the request's closure differs from the exposure preview"]
+          : []),
+      ];
+
   // A separate question, asked last so it cannot stop the flow: may a statement name the shared claim it restates?
   const restating = crypto.randomUUID();
   const restated = await caller.draft(workspaceId, "lesson", `Restate the claim (${label})`, {
@@ -879,11 +964,34 @@ async function authorModule(caller: FlowCaller, workspaceId: string, claim: Veri
       },
     ],
   });
+  // Cite the shared claim this statement restates, and read the link back from the saved structure.
+  const restatedRevision = restated.error ? "" : String(object(restated.value).revisionId ?? "");
+  const restatedSaved = restatedRevision ? await caller.structure(workspaceId, restatedRevision) : undefined;
+  const restatedClaim = rows(object(restatedSaved?.value).statements)[0]?.usesClaimId;
+  const restatement = restated.error
+    ? failure(restated)
+    : restatedClaim === claim.id
+      ? ""
+      : `saved, but the structure read returns ${restatedSaved?.error ? failure(restatedSaved) : `claim ${String(restatedClaim)}`}`;
   return {
-    restatement: restated.error ? failure(restated) : "",
+    restatement,
     moduleRevision,
+    workspaceId,
     workId: String(module.workId),
     closure: String(exposure.closure_sha256),
+    threadId,
+    requestId,
+    workspaces: { passed: workspacesPassed, observed: workspacesObserved },
+    saved: {
+      problems: savedProblems,
+      tokens: savedTokens,
+      observed: `module: ${rows(object(savedModule.value).parts).length} parts, ${rows(object(savedModule.value).outcomes).length} outcome, ${rows(object(savedModule.value).requirements).length} requirement, ${rows(object(savedModule.value).runtime).length} runtime; lesson: ${rows(object(savedLesson.value).bindings).length} binding`,
+    },
+    handOver: {
+      problems: handOverProblems,
+      tokens: estimateTokens(listedReviews.text),
+      observed: `request ${requestId.slice(0, 8)} listed as ${String(request?.status ?? "absent")} with thread ${threadId.slice(0, 8)} and the exposure's closure`,
+    },
     tokens: sizes.reduce((total, size) => total + size, 0),
     summary:
       `module ${moduleRevision.slice(0, 8)} places 2 lessons and 1 activity; section bound to verified claim ` +
@@ -904,6 +1012,8 @@ function flowNotRun(reason: string): void {
   record(questions.authorFlow, "http", "not_run", reason, flowWanted);
   for (const path of ["mcp", "http"] as const) {
     record(questions.restate, path, "not_run", reason, "a statement linked to the shared claim it restates");
+    for (const question of [questions.workspaces, questions.saved, questions.handOver, questions.feedback])
+      record(question, path, "not_run", reason, "the authoring flow");
   }
 }
 
@@ -967,14 +1077,44 @@ async function authoringFlowChecks(): Promise<void> {
     if (answer.error?.code !== "FORBIDDEN")
       throw new FlowStop(`the agent's release review was not refused: ${answer.error ? failure(answer) : "accepted"}`);
   };
+  const flows: Partial<Record<Path, Awaited<ReturnType<typeof authorModule>>>> = {};
   const runPath = async (
     path: Path,
-    flow: () => Promise<{ summary: string; tokens: number; restatement: string }>,
+    flow: () => Promise<Awaited<ReturnType<typeof authorModule>>>,
     problem: string,
   ) => {
-    if (problem) return record(questions.authorFlow, path, false, problem, flowWanted);
+    if (problem) {
+      record(questions.authorFlow, path, false, problem, flowWanted);
+      for (const question of [questions.workspaces, questions.saved, questions.handOver])
+        record(question, path, "not_run", `the authoring flow did not run: ${problem}`, "the authoring flow");
+      return;
+    }
     try {
       const result = await flow();
+      flows[path] = result;
+      record(
+        questions.workspaces,
+        path,
+        result.workspaces.passed,
+        result.workspaces.observed,
+        "the caller's workspaces with its role, the one it authors in listed as writable",
+      );
+      record(
+        questions.saved,
+        path,
+        result.saved.problems.length === 0,
+        result.saved.problems.length === 0 ? result.saved.observed : result.saved.problems.join("; "),
+        "the saved parts (each still its child's head), outcome, requirement with its route, runtime and the anchored claim binding",
+        result.saved.tokens,
+      );
+      record(
+        questions.handOver,
+        path,
+        result.handOver.problems.length === 0,
+        result.handOver.problems.length === 0 ? result.handOver.observed : result.handOver.problems.join("; "),
+        "a listable review request awaiting a person, naming the hand-over thread and the closure a release would carry",
+        result.handOver.tokens,
+      );
       record(
         questions.authorFlow,
         path,
@@ -988,13 +1128,103 @@ async function authoringFlowChecks(): Promise<void> {
         path,
         !result.restatement,
         result.restatement
-          ? `a statement naming the verified claim it restates was refused: ${result.restatement}`
-          : "a statement was saved with the verified claim it restates",
-        "a statement anchored to a block and linked to the shared claim it restates",
+          ? `a statement naming the verified claim it restates: ${result.restatement}`
+          : "a statement was saved with the verified claim it restates, and the structure read returns that claim",
+        "a statement anchored to a block and linked to the shared claim it restates, read back",
       );
     } catch (error) {
       if (!(error instanceof FlowStop)) throw error;
       record(questions.authorFlow, path, false, error.message, flowWanted);
+      for (const question of [questions.workspaces, questions.saved, questions.handOver])
+        record(question, path, "not_run", `the authoring flow stopped: ${error.message}`, "the authoring flow");
+    }
+  };
+
+  /**
+   * What feedback did I get: a second lab user plays the person. The author adds them to the shared workspace of the
+   * HTTP path as an editor; they reply in the hand-over thread and record a release review with only their own session
+   * (a person to the database). The agent then reads the feedback through the MCP tool and through HTTP.
+   */
+  const feedbackWanted =
+    "the request reviewed by a person (decision and actor kind human) and the person's reply after the hand-over note";
+  const feedbackChecks = async (flow: Awaited<ReturnType<typeof authorModule>> | undefined) => {
+    if (!flow) {
+      for (const path of ["mcp", "http"] as const)
+        record(questions.feedback, path, "not_run", "the HTTP authoring flow did not complete", feedbackWanted);
+      return;
+    }
+    const reviewer = await createLabUser(lab, "consumer-eval-reviewer");
+    const person = { authorization: `Bearer ${reviewer.accessToken}` };
+    const reply = "Reviewer: tighten the activity's evidence rule before release.";
+    const setup = [
+      await command(author, "grant_member", flow.workspaceId, { principal_id: reviewer.id, role: "editor" }),
+      await command(person, "append_message", flow.workspaceId, {
+        thread_id: flow.threadId,
+        role: "user",
+        content: { schema: "aieng.message.v1", parts: [{ text: reply }] },
+      }),
+      await command(person, "review_revision", flow.workspaceId, {
+        work_id: flow.workId,
+        revision_id: flow.moduleRevision,
+        review: {
+          reviewType: "release_review",
+          decision: "changes_requested",
+          closure_sha256: flow.closure,
+          ceiling: "workspace",
+        },
+      }),
+    ].find((answer) => answer.error);
+    const readers: Record<"mcp" | "http", () => Promise<Answer>> = {
+      mcp: async () => {
+        const agent = new Client({ name: "consumer-surface-eval-feedback", version: "0.1.0" });
+        await agent.connect(
+          new StreamableHTTPClientTransport(new URL(mcpUrl), { requestInit: { headers: await agentHeaders("mcp") } }),
+        );
+        try {
+          return await tool(
+            "inspect_authoring",
+            { what: "reviews", workspace_id: flow.workspaceId, id: flow.moduleRevision },
+            agent,
+          );
+        } finally {
+          await agent.close();
+        }
+      },
+      http: async () =>
+        reading(await agentHeaders("harness"), "list_reviews", flow.workspaceId, { revision_id: flow.moduleRevision }),
+    };
+    for (const path of ["mcp", "http"] as const) {
+      if (setup) {
+        record(
+          questions.feedback,
+          path,
+          false,
+          `the person's feedback could not be left: ${failure(setup)}`,
+          feedbackWanted,
+        );
+        continue;
+      }
+      const answer = await readers[path]();
+      const request = rows(object(answer.value).requests).find((row) => row.requestId === flow.requestId);
+      const review = rows(request?.reviews).find((row) => row.actorKind === "human");
+      const replied = rows(request?.replies).find((row) => row.fromPerson === true);
+      const problems = answer.error
+        ? [`refused: ${failure(answer)}`]
+        : [
+            ...(request?.status === "reviewed" ? [] : [`status ${String(request?.status ?? "absent")}`]),
+            ...(review?.decision === "changes_requested" ? [] : ["the person's review is not listed"]),
+            ...(JSON.stringify(replied?.content ?? "").includes("tighten") ? [] : ["the person's reply is not listed"]),
+          ];
+      record(
+        questions.feedback,
+        path,
+        problems.length === 0,
+        problems.length === 0
+          ? `request ${flow.requestId.slice(0, 8)} reviewed by a person (changes_requested, actor kind human) with 1 reply after the note; the person is a second lab user`
+          : problems.join("; "),
+        feedbackWanted,
+        estimateTokens(answer.text),
+      );
     }
   };
 
@@ -1034,6 +1264,10 @@ async function authoringFlowChecks(): Promise<void> {
               handOver: (workspace_id, revision_id, note) =>
                 call("request_review", { workspace_id, revision_id, note }),
               thread: (_workspaceId, threadId) => call("inspect_authoring", { what: "thread", id: threadId }),
+              workspaces: () => call("inspect_authoring", { what: "workspace" }),
+              structure: (_workspaceId, revisionId) => call("inspect_authoring", { what: "revision", id: revisionId }),
+              reviews: (workspace_id, revisionId) =>
+                call("inspect_authoring", { what: "reviews", workspace_id, id: revisionId }),
             },
             workspaceId,
             claim as VerifiedClaim,
@@ -1079,8 +1313,9 @@ async function authoringFlowChecks(): Promise<void> {
                 visibility: "workspace",
               });
               if (thread.error) return thread;
+              const threadId = String(object(thread.value).threadId);
               const message = await command(headers, "append_message", workspace, {
-                thread_id: object(thread.value).threadId,
+                thread_id: threadId,
                 role: "assistant",
                 content: { schema: "aieng.message.v1", parts: [{ text: note }] },
                 context: {
@@ -1088,9 +1323,21 @@ async function authoringFlowChecks(): Promise<void> {
                   items: [{ item_key: "revision", reason: "attached", revision_id: revisionId }],
                 },
               });
-              return message.error ? message : thread;
+              if (message.error) return message;
+              const marked = await command(headers, "mark_ready_for_review", workspace, {
+                revision_id: revisionId,
+                note,
+                thread_id: threadId,
+              });
+              if (marked.error) return marked;
+              return { text: marked.text, value: { threadId, requestId: object(marked.value).eventId } };
             },
             thread: (workspace, threadId) => reading(headers, "get_thread", workspace, { thread_id: threadId }),
+            workspaces: () => reading(headers, "list_workspaces", null, {}),
+            structure: (workspace, revisionId) =>
+              reading(headers, "get_revision_structure", workspace, { revision_id: revisionId }),
+            reviews: (workspace, revisionId) =>
+              reading(headers, "list_reviews", workspace, { revision_id: revisionId }),
           },
           workspaceId,
           claim as VerifiedClaim,
@@ -1101,6 +1348,8 @@ async function authoringFlowChecks(): Promise<void> {
       },
       noClaim,
     );
+
+    await feedbackChecks(flows.http);
   } finally {
     for (const grant of grants) await command(author, "revoke_client_grant", null, { grant_id: grant });
   }

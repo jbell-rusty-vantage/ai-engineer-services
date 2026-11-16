@@ -19,6 +19,16 @@ Corrected in the skill:
 
 Still true after integration: no run record, no submitted-for-review state outside an accepted brief, no feedback operation, no release transition writer, nothing schedules the keep-current reads. New findings: no operation lists the shared workspaces a caller belongs to; no read returns a saved revision's bindings, parts, outcomes, requirements, prerequisites or runtime requirements; and on the lab a statement that names the shared claim it restates is refused with `NOT_FOUND: cited shared claim`, while a claim binding on the same block is accepted.
 
+**Closed later on 2026-11-16** (database contract 0.9.0, migration `20261116140000_build08_authoring_review_reads`, suite `supabase/tests/authoring_review_reads.sql`; service operations `list_workspaces`, `get_revision_structure`, `mark_ready_for_review`, `list_reviews`, served through `inspect_authoring` and `request_review` and the `aieng authoring` commands):
+
+- Listing the workspaces a caller belongs to: `list_workspaces`, the caller's own memberships with role and whether it can write.
+- Reading back a saved revision's bindings, parts, outcomes, requirements, prerequisites, runtime requirements and statements: `get_revision_structure`, for members of the revision's workspace.
+- A submitted-for-review state outside an accepted brief: `mark_ready_for_review` records the author's own `revision_proposed` event with the closure the database computes. It is not a review.
+- Listing review requests and feedback: `list_reviews` derives each request's status (awaiting_review, reviewed by a person, superseded) and returns the reviews recorded since and the replies in the hand-over conversation.
+- The cited-shared-claim refusal was the row policy gap that contract 0.8.0 closed (`product_api_owner` could not see `evidence.claim` rows). A statement naming this tenant's claim is accepted; another tenant's claim is refused `NOT_FOUND: cited shared claim`.
+
+Still open: no `feedback` event writer (a person's feedback is a recorded review or a reply in the conversation), no feedback on an exact block, no withdrawing a request, no run record, no release transition writer, nothing schedules the keep-current reads. Lab-proven only, through the consumer evaluation ([script](../../scripts/consumer-surface-eval.ts)); not deployed.
+
 Section 6 item 1 moved on 2026-11-16: a claim binding anchored to one section of a lesson was saved, read back in the exposure preview and handed over, through MCP and through HTTP, by the consumer evaluation ([script](../../scripts/consumer-surface-eval.ts)). Whether search reads the anchor is still unproven.
 
 Status words used below:

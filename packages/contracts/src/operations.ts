@@ -93,6 +93,25 @@ const rows: readonly Row[] = [
   ["progress", "read", "read", "Course progress computed from active credit"],
   ["get_result", "read", "read", "Read an assessment result with its explanations"],
   ["get_thread", "read", "read", "Read a conversation"],
+  ["list_workspaces", "read", "read", "List the workspaces you belong to, with your role and whether you can write"],
+  [
+    "get_revision_structure",
+    "read",
+    "read",
+    "Read what a saved revision binds, contains, promises and requires: bindings, parts, outcomes, requirements, prerequisites, runtime, statements",
+  ],
+  [
+    "mark_ready_for_review",
+    "command",
+    "author",
+    "Mark an exact revision ready for a person's review, with its closure and hand-over note; records no review",
+  ],
+  [
+    "list_reviews",
+    "read",
+    "read",
+    "List a workspace's review requests with their status, the reviews people recorded and the replies to the hand-over",
+  ],
   // Build 07: research requests, datasets, statements and support
   [
     "propose_research",

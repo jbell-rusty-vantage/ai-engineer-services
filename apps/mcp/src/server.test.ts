@@ -8,6 +8,7 @@ import {
   guideTopics,
   type JsonObject,
   operationCatalog,
+  ProductError,
   type ProductPort,
   publicOperations,
   type ReadInput,
@@ -301,6 +302,8 @@ describe("authoring tools", () => {
       if (operation === "create_thread") return { threadId: "thread-1" };
       if (operation === "append_message") return { messageId: "message-1", seq: 1, contextSnapshotId: "s1" };
       if (operation === "deliver_output") return { deliveryId: "delivery-1" };
+      if (operation === "mark_ready_for_review")
+        return { eventId: "request-1", revisionId: head, closureSha256: "c105e", alreadyRequested: false };
       return { workId: work, revisionId: head };
     }
     override async read(operation: string, input: ReadInput): Promise<unknown> {
@@ -341,6 +344,27 @@ describe("authoring tools", () => {
         };
       }
       if (operation === "get_thread") return { threadId: "thread-1", messages: [] };
+      if (operation === "list_workspaces")
+        return [{ workspaceId: ws, name: "Team", kind: "shared", role: "editor", canWrite: true, ownedByYou: false }];
+      if (operation === "get_revision_structure") {
+        if ((input.payload as { revision_id: string }).revision_id === child)
+          throw new ProductError("NOT_FOUND", "revision");
+        return {
+          revisionId: head,
+          isHead: true,
+          bindings: [
+            { localKey: "claim-1", relation: "supports", target: { kind: "claim", id: claim }, blockKey: key },
+          ],
+          parts: [{ occurrenceKey: key, ordinal: 0, childRevisionId: child, childIsHead: true }],
+          outcomes: [],
+          requirements: [],
+          prerequisites: [],
+          runtime: [{ localKey: "py", name: "python", versionSpec: ">=3.12" }],
+          statements: [],
+        };
+      }
+      if (operation === "list_reviews")
+        return { workspaceId: ws, requests: [{ requestId: "request-1", status: "awaiting_review" }], reviews: [] };
       return [];
     }
   }
@@ -423,12 +447,12 @@ describe("authoring tools", () => {
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("inspect_authoring reads the workspace, the works, one work, a revision, an exposure and a thread", async () => {
+  it("inspect_authoring reads the workspaces, the works, one work, a revision, an exposure, a thread and reviews", async () => {
     const port = new AuthoringPort();
     const context = { port, localFiles: false };
     await expect(inspectAuthoring.run(context, { what: "workspace" })).resolves.toMatchObject({
       personal_workspace_id: "personal",
-      shared_workspaces: expect.stringContaining("not listable"),
+      workspaces: [{ workspaceId: ws, role: "editor", canWrite: true }],
     });
     await expect(inspectAuthoring.run(context, { what: "works", workspace_id: ws, kind: "lesson" })).resolves.toEqual({
       workspace_id: ws,
@@ -444,11 +468,18 @@ describe("authoring tools", () => {
       body,
       blocks: [{ key, type: "text" }],
       statements: [{ assertionId: claim, blockKey: key }],
-      not_returned: ["bindings", "parts", "outcomes", "requirements", "prerequisites", "runtime"],
+      is_head: true,
+      bindings: [{ localKey: "claim-1", target: { kind: "claim", id: claim }, blockKey: key }],
+      parts: [{ childRevisionId: child, childIsHead: true }],
+      runtime: [{ name: "python", versionSpec: ">=3.12" }],
     });
+    expect(read).not.toHaveProperty("not_returned");
     await expect(inspectAuthoring.run(context, { what: "revision", id: head })).resolves.toMatchObject({
       revision_id: head,
     });
+    const released = (await inspectAuthoring.run(context, { what: "revision", id: child })) as JsonObject;
+    expect(released.structure).toContain("only members");
+    expect(released).not.toHaveProperty("bindings");
     await expect(
       inspectAuthoring.run(context, { what: "exposure", workspace_id: ws, id: head }),
     ).resolves.toMatchObject({ ceiling: "workspace", closure_sha256: "c105e" });
@@ -456,34 +487,51 @@ describe("authoring tools", () => {
     await expect(inspectAuthoring.run(context, { what: "thread", id: key })).resolves.toMatchObject({
       threadId: "thread-1",
     });
+    await expect(
+      inspectAuthoring.run(context, { what: "reviews", workspace_id: ws, id: head, status: "awaiting_review" }),
+    ).resolves.toMatchObject({ requests: [{ requestId: "request-1", status: "awaiting_review" }] });
     expect(port.reads.map((call) => call.operation)).toEqual([
+      "list_workspaces",
       "list_works",
       "list_works",
       "get_revision",
       "get_report",
+      "get_revision_structure",
       "get_revision",
       "get_report",
+      "get_revision_structure",
+      "get_revision",
+      "get_report",
+      "get_revision_structure",
       "preview_exposure",
       "preview_exposure",
       "get_thread",
+      "list_reviews",
     ]);
-    expect(port.reads.at(-2)?.input).toEqual({
+    expect(port.reads.at(-3)?.input).toEqual({
       workspaceId: ws,
       payload: { root_revision_id: head, ceiling: "named" },
     });
+    expect(port.reads.at(-1)?.input).toEqual({
+      workspaceId: ws,
+      payload: { revision_id: head, status: "awaiting_review" },
+    });
     expect(port.commands.map((call) => call.operation)).toEqual(["ensure_personal_workspace"]);
-    for (const what of ["works", "work", "revision", "exposure", "thread"] as const) {
+    for (const what of ["works", "work", "revision", "exposure", "thread", "reviews"] as const) {
       await expect(inspectAuthoring.run(context, { what }), what).rejects.toMatchObject({ code: "VALIDATION" });
     }
   });
 
-  it("request_review leaves a note tied to the revision and records no review", async () => {
+  it("request_review leaves a note tied to the revision, marks it ready and records no review", async () => {
     const port = new AuthoringPort();
     const result = await requestReview.run(
       { port, localFiles: false },
       { workspace_id: ws, revision_id: head, note: "Submitted for review: module.", ceiling: "named" },
     );
     expect(result).toMatchObject({
+      request_id: "request-1",
+      already_requested: false,
+      status: "awaiting_review",
       thread_id: "thread-1",
       message_id: "message-1",
       revision_id: head,
@@ -495,7 +543,15 @@ describe("authoring tools", () => {
     });
     expect(result).not.toHaveProperty("delivery_id");
     expect(port.reads.map((call) => call.operation)).toEqual(["get_revision", "preview_exposure"]);
-    expect(port.commands.map((call) => call.operation)).toEqual(["create_thread", "append_message"]);
+    expect(port.commands.map((call) => call.operation)).toEqual([
+      "create_thread",
+      "append_message",
+      "mark_ready_for_review",
+    ]);
+    expect(port.commands[2]?.input).toEqual({
+      workspaceId: ws,
+      payload: { revision_id: head, ceiling: "named", note: "Submitted for review: module.", thread_id: "thread-1" },
+    });
     expect(port.commands[0]?.input).toMatchObject({
       workspaceId: ws,
       payload: { title: "Review request: Reliable tool calls", purpose: "authoring", visibility: "workspace" },
@@ -525,7 +581,11 @@ describe("authoring tools", () => {
       { workspace_id: ws, revision_id: head, note: "Second hand-over.", thread_id: key, obligation_id: claim },
     );
     expect(result).toMatchObject({ thread_id: key, delivery_id: "delivery-1", ceiling: "workspace" });
-    expect(port.commands.map((call) => call.operation)).toEqual(["deliver_output", "append_message"]);
+    expect(port.commands.map((call) => call.operation)).toEqual([
+      "deliver_output",
+      "append_message",
+      "mark_ready_for_review",
+    ]);
     expect(port.commands[0]?.input.payload).toEqual({ obligation_id: claim, revision_id: head });
     const sent = port.commands[1]?.input.payload as { content: { parts: { text: string }[] } } | undefined;
     const text = sent?.content.parts[0]?.text;

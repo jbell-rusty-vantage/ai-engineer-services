@@ -42,6 +42,18 @@ function parsePayload(definition: OperationDefinition, payload: JsonObject): Jso
   return parsed.data as JsonObject;
 }
 
+/**
+ * The catalog names the operation, so a database that answers UNKNOWN_OPERATION for it is older than the operation
+ * (for example the authoring reads of database contract 0.9.0): this deployment cannot answer it yet.
+ */
+function notYetInDatabase(operation: string) {
+  return (error: unknown): never => {
+    if (error instanceof ProductError && error.code === "UNKNOWN_OPERATION")
+      throw new ProductError("NOT_AVAILABLE", `${operation}: this deployment's database contract does not have it yet`);
+    throw error;
+  };
+}
+
 /** Product use cases shared by every transport (HTTP API, remote MCP, and through the client the CLI/local MCP). */
 export class ProductService {
   private readonly custody: ArtifactCustody;
@@ -57,13 +69,15 @@ export class ProductService {
 
   async runCommand(session: CallerSession, operation: string, input: CommandInput): Promise<JsonObject> {
     const definition = publicOperation(operation, "command");
-    const result = await this.database.command(session, {
-      workspaceId: input.workspaceId,
-      operation: definition.name,
-      idempotencyKey: input.idempotencyKey ?? `cmd-${randomUUID()}`,
-      expectedHead: input.expectedHead ?? null,
-      payload: parsePayload(definition, input.payload),
-    });
+    const result = await this.database
+      .command(session, {
+        workspaceId: input.workspaceId,
+        operation: definition.name,
+        idempotencyKey: input.idempotencyKey ?? `cmd-${randomUUID()}`,
+        expectedHead: input.expectedHead ?? null,
+        payload: parsePayload(definition, input.payload),
+      })
+      .catch(notYetInDatabase(definition.name));
     if (manifestProducingOperations.has(definition.name) && result.replayed !== true) await this.storeManifest(result);
     return result;
   }
@@ -73,11 +87,9 @@ export class ProductService {
     const payload = parsePayload(definition, input.payload);
     if (isKnowledgeOperation(definition.name))
       return this.readKnowledge(session, definition.name, definition.scope, payload);
-    const result = await this.database.read(session, {
-      workspaceId: input.workspaceId ?? null,
-      operation: definition.name,
-      payload,
-    });
+    const result = await this.database
+      .read(session, { workspaceId: input.workspaceId ?? null, operation: definition.name, payload })
+      .catch(notYetInDatabase(definition.name));
     if (result === null) throw new ProductError("NOT_FOUND", definition.name);
     return result;
   }

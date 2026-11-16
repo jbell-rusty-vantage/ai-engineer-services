@@ -60,6 +60,41 @@ function withinLimit(text: string): { text: string; truncated: boolean } {
   return { text: cut.slice(0, Math.max(cut.lastIndexOf("\n"), 0)), truncated: true };
 }
 
+/** A heading's anchor as Markdown renderers make it: lower case, punctuation dropped, spaces as hyphens. */
+function headingAnchor(heading: string): string {
+  return heading
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s_-]/gu, "")
+    .trim()
+    .replace(/\s/g, "-");
+}
+
+/**
+ * The entry an anchor names in a Markdown page, or undefined when the page has no such anchor. An `<a id>` in a table
+ * row gives the page title, the table header and that row (the query catalog is one table); an `<a id>` elsewhere or a
+ * heading gives the section up to the next heading of the same or a higher level.
+ */
+function markdownEntry(whole: string, anchor: string): string | undefined {
+  const lines = whole.split("\n");
+  const marker = `id="${anchor}"`;
+  const headingLevel = (line: string) => /^(#{1,6})\s/.exec(line)?.[1]?.length;
+  let at = lines.findIndex((line) => line.includes(marker));
+  if (at < 0) at = lines.findIndex((line) => headingLevel(line) && headingAnchor(line.replace(/^#+\s/, "")) === anchor);
+  if (at < 0) return undefined;
+  const title = lines.find((line) => headingLevel(line) === 1);
+  const line = lines[at] ?? "";
+  if (line.startsWith("|")) {
+    let start = at;
+    while (start > 0 && lines[start - 1]?.startsWith("|")) start -= 1;
+    const header = lines.slice(start, Math.min(start + 2, at));
+    return [...(title && title !== line ? [title, ""] : []), ...header, line].join("\n");
+  }
+  const level = headingLevel(line) ?? 7;
+  let end = at + 1;
+  while (end < lines.length && !((headingLevel(lines[end] ?? "") ?? 7) <= level)) end += 1;
+  return [...(title && title !== line && level > 1 ? [title, ""] : []), ...lines.slice(at, end)].join("\n").trimEnd();
+}
+
 /**
  * Read-only access to the generated schema workspace (its `search/index.json` and page files). No database call.
  * The head is read on every call, so a regenerated workspace is picked up and a stale one is visible.
@@ -100,6 +135,11 @@ export class SchemaWorkspace implements SchemaPort {
       }
     }
     const whole = (await readFile(file, "utf8")).replace(/\r\n/g, "\n");
+    const entry = anchor && extension === ".md" ? markdownEntry(whole, anchor) : undefined;
+    if (entry !== undefined) {
+      const { text, truncated } = withinLimit(entry);
+      return { head, page: `${path}#${anchor}`, bytes: Buffer.byteLength(entry, "utf8"), truncated, text };
+    }
     const { text, truncated } = withinLimit(whole);
     return { head, page: path, bytes: Buffer.byteLength(whole, "utf8"), truncated, text };
   }
