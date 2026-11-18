@@ -1,62 +1,46 @@
-# AI Engineer service — agent guide
+# AI Engineer service: agent guide
 
-Read `../AGENTS.md` (AI Engineer domain) and `../../AGENTS.md` (BellLabs) first. Start with [README](README.md) and
-[architecture](docs/ARCHITECTURE.md).
+The AI Engineer product API, MCP server (stdio and remote HTTP), `aieng` CLI, typed client and agent skills, over the
+schema of `../ai-engineer-db-contract`. Read `../AGENTS.md` and `../../AGENTS.md` first. Proven on the disposable lab
+stack only, not deployed. Map of what a user can reach: [features](features/README.md); design:
+[architecture](docs/ARCHITECTURE.md); variables: [environment](docs/ENVIRONMENT.md).
 
-## Ownership
+## Commands
 
-- This repository owns AI Engineer product transports: HTTP API, MCP server, CLI, typed client and the agent skills.
-- Schema, migrations, database functions (`api.product_command`, `product_read`, `product_worker`), the `api` read
-  views and functions, the generated schema workspace and generated types belong to `../ai-engineer-db-contract`.
-  Never add tables, policies or SQL authority here.
-- Knowledge capabilities (retrieval, conversion, verification) belong to `../../platform/knowledge-services`; call
-  its published HTTP client, never its internal packages. Missions belong to `../../platform/mission-control`.
-- `../ai-engineer-web` is a client of this API (through `@aiengineer/service-client`); do not put product logic there.
+```sh
+./dev status        # orient (JSON): branch, ahead/behind, dirty, contract consumed, database target, local services
+./dev check         # the fast gate: pnpm typecheck, pnpm test, pnpm lint, planes check, provenance (warn-only)
+./dev trace check   # provenance gaps since the 2026-11-18 cutover
+```
+
+Also `./dev doctor`, `./dev test unit|surface`, `./dev hooks install`, `./dev planes list|show|check` and
+`./dev db status|schema|query --plane P` (read-only; `--plane` always required). PowerShell: `.\dev`.
+
+## Boundaries, each with its check
+
+| Boundary | Enforced by |
+| --- | --- |
+| Schema, migrations, database functions, `api` views, the schema workspace and generated types belong to `../ai-engineer-db-contract`; no tables, policies or SQL authority here | review; no SQL in this repository |
+| One operation catalog, `packages/contracts/src/operations.ts`; routes, tools and commands derive from it | `operations.test.ts` |
+| One surface catalog, `packages/contracts/src/surface.ts` (jobs, MCP tools, CLI commands); a new operation needs a guide topic (`guide/operation-topics.ts`) | `guide.test.ts` "surface catalog", "guide topics"; `apps/mcp/src/server.test.ts` "exactly the surface catalog" |
+| The guide is the one place for how-to; skills hold method, name only real tools, never a schema, table or column ([rules](features/guide-and-describe.md#skills)) | `guide.test.ts` "the agent skill", "skills in the guide" |
+| MCP tools are few and task-shaped (21); none calls a person's decision (`review_revision`, `freeze_release`, `offer_release`, `accept_research`, `decide_delivery`, `decide_dataset_change`) | `server.test.ts`; `guide.test.ts` "keeps the review decisions people make out of every tool" |
+| In-process transports (API, remote MCP) call `packages/application`; out-of-process clients (CLI, local MCP, web) use `packages/client`; both implement `ProductPort` and `SchemaPort` | `pnpm typecheck` |
+| Every user call runs with the caller's own Supabase session; the secret key only for byte custody and worker calls | `knowledge-service.test.ts` "PostgrestKnowledgeDatabase" (caller's bearer); `apps/api/src/server.test.ts` |
+| Errors are `{ code, message, detail? }` with `ProductErrorCode`; a read the deployment cannot answer is `NOT_AVAILABLE`, never empty | `operations.test.ts` "maps every error code"; `product-service.test.ts` "answers NOT_AVAILABLE" |
+| Local by default: scripts load only `.env.lab` (loopback lab); a remote needs `AIENG_DB_REMOTE_CONFIRM=<project ref>`; lab scripts refuse any remote | `config.test.ts`; `./dev status` `database_target` |
+| Database names are read only by `packages/application/src/config.ts`; every variable is registered | `config/env.registry.yaml`, [environment](docs/ENVIRONMENT.md) |
+| Knowledge capabilities belong to `../../platform/knowledge-services` (its HTTP client only); missions to `../../platform/mission-control`; `../ai-engineer-web` is a client, no product logic there | review |
+| Every commit ends with `Refs:` (OVE-n, B08-S<n>, D-<n>, AS-S<n>, ADR-NNNN), and `Decisions:` / `Docs:` when they apply | commit-msg hook and CI `provenance` job, warn-only ([provenance](features/provenance.md)) |
+| The fast gate passes on Linux | `.github/workflows/ci.yml` runs `./dev check` |
 
 ## Rules
 
-- One operation catalog (`packages/contracts/src/operations.ts`). HTTP routes, MCP tools and CLI commands are derived
-  from it or call it; never re-declare an operation elsewhere.
-- One surface catalog (`packages/contracts/src/surface.ts`): the jobs, the MCP tool names with their one-line
-  descriptions, and the CLI commands. The MCP server, the CLI usage text and the guide read it. A new tool or command
-  needs an entry there; a new operation needs a guide topic (`guide/operation-topics.ts`). Tests enforce both.
-- The guide (`packages/contracts/src/guide`) is the one place for operational how-to: which operation or tool does a
-  step. `skills/` holds the method: `ai-engineer` only routes to the guide, `content-authoring` and
-  `ai-engineer-knowledge-charter` say how to do the work well. The guide serves every `SKILL.md` and every file under
-  a skill's `references/` as a topic, on every transport. A new skill page needs its import line in
-  `guide/skill-files.ts`; the build inlines the Markdown and a test fails when the list and the folder differ.
-- A skill names a tool and says when to use it. It never restates arguments (those come from `aieng_describe`) and
-  never names a database schema, table or column. What exists today is said once, in the skill's Availability section.
-- In guide pages and skill pages a code span starts with a tool or operation name, starts with `aieng`, or is a
-  literal, so the test that every named tool, operation and command exists stays mechanical.
-- In-process transports (API, remote MCP) call `packages/application`. Out-of-process clients (CLI, local MCP, web)
-  use `packages/client`. Both implement `ProductPort` (and `SchemaPort`), so MCP tools are written once.
-- MCP tools are task-shaped and few (currently 21). Add a tool only for a real agent workflow; compose existing
-  operations. New business logic goes into the database layer or `packages/application` first, so every surface
-  gets it. Only local-machine work (reading a folder, packaging files) may live in a client. No tool calls an
-  operation that records a person's decision (`review_revision`, `freeze_release`, `offer_release`, `accept_research`,
-  `decide_delivery`, `decide_dataset_change`); a test keeps it so.
-- Every user call runs with the caller's own Supabase session so row security and grants apply. The service-role
-  key is used only for byte custody (storage + `complete_asset`) after a user-authorized registration. Knowledge
-  reads (`packages/application/src/knowledge`) read the `api` views and functions as the caller, too.
-- Errors use the shared `ProductErrorCode` vocabulary and `{ code, message, detail? }` bodies on every surface. A
-  read the deployment cannot answer yet is `NOT_AVAILABLE`, never an empty result.
-- Naming: packages `@aiengineer/service-*`; files kebab-case; operations and tools snake_case; classes PascalCase;
-  no abbreviations in public names. Keep modules small and single-purpose; prefer explicit types at boundaries.
-
-## Validate
-
-```bash
-pnpm build && pnpm typecheck && pnpm test && pnpm lint
-pnpm eval:consumer-surface --without-database   # consumer scorecard, no database needed
-```
-
-End-to-end proofs need the disposable lab stack; see README. Report results as implemented / tested / integrated /
-qualified, never as deployed unless a deployment was actually verified.
-
-## Environment
-
-Database variables are `AIENG_DB_URL`, `AIENG_DB_PUBLISHABLE_KEY`, `AIENG_DB_SECRET_KEY` and `AIENG_DB_PROJECT_REF`, read only by `packages/application/src/config.ts` (no aliases).
-Local scripts load a git-ignored `.env` via `--env-file-if-exists`; never print or commit values.
-Service/client variables (`AIENG_API_*`, `AIENG_MCP_*`, `AIENG_ACCESS_TOKEN`, `AIENG_CLIENT_TOKEN`, `AIENG_SCHEMA_WORKSPACE_DIR`) are registered too.
-Registry and lab mapping: `config/env.registry.yaml`, `docs/ENVIRONMENT.md`. This repository is public (`jbell-rusty-vantage/ai-engineer-services`).
+- New business logic goes into the database layer or `packages/application` first, so every surface gets it; only
+  local-machine work (reading a folder, packaging files) may live in a client.
+- Naming: packages `@aiengineer/service-*`; files kebab-case; operations and tools snake_case; classes PascalCase; no
+  abbreviations in public names.
+- This repository is public (`jbell-rusty-vantage/ai-engineer-services`): never print or commit `.env*` values,
+  tokens or lab receipts. Never write the Aura graph `4773dc72` (`./dev planes` refuses it).
+- End-to-end proofs (`pnpm lab:prove-surfaces`, `pnpm eval:consumer-surface`) need the lab stack and a running API;
+  report implemented / tested / integrated / qualified, never deployed without a verified deployment.
