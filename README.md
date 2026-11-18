@@ -47,6 +47,7 @@ Requires Node 24 and pnpm 11.
 
 ```bash
 pnpm install
+./dev status     # orient (JSON); ./dev check is the fast gate (typecheck, tests, lint, planes, provenance)
 pnpm build
 pnpm test        # unit tests
 pnpm lint        # Biome
@@ -55,8 +56,10 @@ pnpm lint        # Biome
 Server processes (API, remote MCP) read `AIENG_DB_URL`, `AIENG_DB_PUBLISHABLE_KEY`, `AIENG_DB_SECRET_KEY` and
 `AIENG_DB_PROJECT_REF` (checked against the URL host). The secret key stays in the server process. Schema navigation
 reads the generated schema workspace at `AIENG_SCHEMA_WORKSPACE_DIR` (default: the sibling checkout
-`../ai-engineer-db-contract/workspace`). A git-ignored `.env` is loaded by the `dev`/`start` scripts; see
-[docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) (also the lab `supabase status` mapping).
+`../ai-engineer-db-contract/workspace`). Local by default: the `dev`/`start` scripts load only the git-ignored
+`.env.lab` (the loopback lab stack); a remote database also needs `AIENG_DB_REMOTE_CONFIRM` set to its project ref,
+otherwise startup refuses. See [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md#local-by-default) (also the lab
+`supabase status` mapping).
 
 ```bash
 node apps/api/dist/index.js          # http://127.0.0.1:3200  (AIENG_API_HOST / AIENG_API_PORT)

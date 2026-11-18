@@ -35,6 +35,7 @@ import {
   createProductService,
   createSchemaWorkspace,
   type DatabaseGateway,
+  isLoopbackHost,
   loadServiceConfig,
   type ObjectStorage,
   ProductService,
@@ -162,19 +163,22 @@ function serviceWithoutDatabase(): ProductService {
   return new ProductService(database, storage);
 }
 
-const loopbackHosts = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
+/** Whether AIENG_DB_URL is the loopback lab stack, checked before `readLabEnvironment` (which refuses anything else). */
+function databaseIsLoopbackLab(): boolean {
+  const url = process.env.AIENG_DB_URL?.trim();
+  return Boolean(url) && isLoopbackHost(new URL(url as string).hostname);
+}
 
 async function userSession(): Promise<string> {
   if (options.withoutDatabase) return "evaluation-without-database";
   const token = process.env.AIENG_ACCESS_TOKEN?.trim();
   if (token) return token;
-  const lab = readLabEnvironment();
-  if (!loopbackHosts.has(new URL(lab.databaseUrl).hostname)) {
+  if (!databaseIsLoopbackLab()) {
     throw new Error(
       "SESSION_REQUIRED: set AIENG_ACCESS_TOKEN to a user session, or point AIENG_DB_URL at the loopback lab stack",
     );
   }
-  return (await createLabUser(lab, "consumer-eval")).accessToken;
+  return (await createLabUser(readLabEnvironment(), "consumer-eval")).accessToken;
 }
 
 const accessToken = await userSession();
@@ -1019,9 +1023,8 @@ function flowNotRun(reason: string): void {
 
 async function authoringFlowChecks(): Promise<void> {
   if (options.withoutDatabase) return flowNotRun("not run without a database");
+  if (!databaseIsLoopbackLab()) return flowNotRun("not run: the flow writes, and only to the loopback lab stack");
   const lab = readLabEnvironment();
-  if (!loopbackHosts.has(new URL(lab.databaseUrl).hostname))
-    return flowNotRun("not run: the flow writes, and only to the loopback lab stack");
 
   const author = { authorization: `Bearer ${(await createLabUser(lab, "consumer-eval-author")).accessToken}` };
   const command = (

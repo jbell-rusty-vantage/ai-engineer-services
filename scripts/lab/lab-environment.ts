@@ -1,4 +1,4 @@
-import { requiredEnvironment } from "@aiengineer/service-application";
+import { isLoopbackHost, requiredEnvironment } from "@aiengineer/service-application";
 
 /**
  * The one place mapping the lab stack's `supabase status -o env` names to the service's names (docs/ENVIRONMENT.md).
@@ -22,9 +22,16 @@ export interface LabEnvironment {
 export function readLabEnvironment(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): LabEnvironment {
-  const hint = "export it from `supabase status -o env` of the lab workdir; mapping in docs/ENVIRONMENT.md";
+  const hint = "put it in .env.lab from `supabase status -o env` of the lab workdir; mapping in docs/ENVIRONMENT.md";
+  const databaseUrl = requiredEnvironment(environment, "AIENG_DB_URL", hint);
+  // The lab creates users and writes fixture data: it never runs against a remote database.
+  if (!isLoopbackHost(new URL(databaseUrl).hostname)) {
+    throw new Error(
+      "LAB_NOT_LOOPBACK: AIENG_DB_URL must be the loopback lab stack (.env.lab), never a remote database",
+    );
+  }
   return {
-    databaseUrl: requiredEnvironment(environment, "AIENG_DB_URL", hint),
+    databaseUrl,
     publishableKey: requiredEnvironment(environment, "AIENG_DB_PUBLISHABLE_KEY", hint),
     secretKey: requiredEnvironment(environment, "AIENG_DB_SECRET_KEY", hint),
   };

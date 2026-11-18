@@ -14,8 +14,8 @@
   },
   "scripts": {
     "build": "tsup src/index.ts src/stdio.ts src/remote.ts --format esm --clean && tsc -p tsconfig.build.json --emitDeclarationOnly --rootDir src --outDir dist",
-    "dev": "tsx watch --env-file-if-exists=../../.env src/remote.ts",
-    "start:remote": "node --env-file-if-exists=../../.env dist/remote.js",
+    "dev": "tsx watch --env-file-if-exists=../../.env.lab src/remote.ts",
+    "start:remote": "node --env-file-if-exists=../../.env.lab dist/remote.js",
     "start:stdio": "node dist/stdio.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

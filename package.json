@@ -15,8 +15,8 @@
     "format": "biome format --write .",
     "dev:api": "pnpm --filter @aiengineer/service-api dev",
     "dev:mcp": "pnpm --filter @aiengineer/service-mcp dev",
-    "lab:prove-surfaces": "tsx --env-file-if-exists=.env scripts/lab/prove-surfaces.ts",
-    "eval:consumer-surface": "tsx --env-file-if-exists=.env scripts/consumer-surface-eval.ts"
+    "lab:prove-surfaces": "tsx --env-file-if-exists=.env.lab scripts/lab/prove-surfaces.ts",
+    "eval:consumer-surface": "tsx --env-file-if-exists=.env.lab scripts/consumer-surface-eval.ts"
   },
   "devDependencies": {
     "@aiengineer/service-application": "workspace:*",

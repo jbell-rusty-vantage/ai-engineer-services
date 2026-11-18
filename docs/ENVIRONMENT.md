@@ -4,7 +4,15 @@ Names only. Source: `config/env.registry.yaml`; database values: `BellLabs/.secr
 
 One database reader: `packages/application/src/config.ts` (`loadServiceConfig`, shared `requiredEnvironment`). The API and remote MCP entry points call it once, pass the result to `createProductService`, and log `describeDatabaseTarget` (plane, ref, host only). The lab scripts and the local MCP server import `requiredEnvironment` from the same module.
 
-Local runs: `pnpm dev:api`, `pnpm dev:mcp`, the `start` scripts, `pnpm lab:prove-surfaces` and `pnpm eval:consumer-surface` start Node with `--env-file-if-exists` on this repository's git-ignored `.env`; the process environment wins. Copy `.env.example`.
+<a id="local-by-default"></a>
+## Local by default
+
+`pnpm dev:api`, `pnpm dev:mcp`, the `start` scripts, `pnpm lab:prove-surfaces` and `pnpm eval:consumer-surface` start Node with `--env-file-if-exists` on the git-ignored `.env.lab` only: the loopback lab stack (`http://127.0.0.1:55621`, plane `lab-aieng-build04` in [`config/planes.toml`](../config/planes.toml)). The process environment wins. Copy `.env.example` to `.env.lab` and fill it from the lab's `supabase status -o env` ([Lab mapping](#lab-mapping)). No script loads `.env`, which holds the remote values; a test in `packages/application/src/config.test.ts` keeps it so.
+
+- **Unconfigured start refuses.** Without `.env.lab` and without `AIENG_DB_URL` in the environment, startup throws `MISSING_ENVIRONMENT: AIENG_DB_URL` and names `.env.lab`.
+- **A remote is an explicit choice.** A non-loopback `AIENG_DB_URL` is refused with `REMOTE_DATABASE_NOT_CONFIRMED` unless `AIENG_DB_REMOTE_CONFIRM` names the same project ref as `AIENG_DB_PROJECT_REF`. Set it in the process environment for one run, for example `AIENG_DB_REMOTE_CONFIRM=<ref> node --env-file=.env apps/api/dist/index.js`. Today the remote has no product schema, so it answers nothing useful; the lab is the target.
+- **The lab scripts never reach a remote.** `scripts/lab/lab-environment.ts` refuses a non-loopback `AIENG_DB_URL` (`LAB_NOT_LOOPBACK`): they create users and write fixture data.
+- The listening log line names `database.location` (`local` or `remote`), the ref and the host, never a key.
 
 ## Database (server processes)
 
@@ -14,6 +22,7 @@ Local runs: `pnpm dev:api`, `pnpm dev:mcp`, the `start` scripts, `pnpm lab:prove
 | `AIENG_DB_PUBLISHABLE_KEY` | same | `MISSING_ENVIRONMENT`; every caller request lacks its `apikey` |
 | `AIENG_DB_SECRET_KEY` | same | `MISSING_ENVIRONMENT`; no byte custody or worker calls |
 | `AIENG_DB_PROJECT_REF` | `loadServiceConfig` | not in the URL host: `AIENG_DB_PROJECT_REF_MISMATCH`; unset with a non-loopback URL: `MISSING_ENVIRONMENT` |
+| `AIENG_DB_REMOTE_CONFIRM` | `loadServiceConfig` | unset or not the project ref with a non-loopback URL: `REMOTE_DATABASE_NOT_CONFIRMED` ([local by default](#local-by-default)) |
 
 ## Service and client
 
@@ -28,6 +37,7 @@ Local runs: `pnpm dev:api`, `pnpm dev:mcp`, the `start` scripts, `pnpm lab:prove
 
 `aieng guide` and `aieng describe` need no variable: they answer from the catalog built into the CLI.
 
+<a id="lab-mapping"></a>
 ## Lab mapping
 
 The disposable lab stack's `supabase status -o env` prints Supabase-style names. The single code location is `SUPABASE_STATUS_TO_AIENG_DB` in `scripts/lab/lab-environment.ts`:
