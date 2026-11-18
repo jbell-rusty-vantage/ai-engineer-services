@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# No secrets and no database: the fast gate is unit tests, types and lint (SPEC-03 K7, OVE-243). The lab and remote
+# proofs (pnpm lab:prove-surfaces, pnpm eval:consumer-surface with a database) never run here. Actions are pinned to a
+# release commit (the same pins as aiengineer/ai-engineer-db-contract).
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The gate: exactly what `./dev check` runs (pnpm typecheck, pnpm test, pnpm lint, planes.py planes check, and a
+  # warn-only provenance check of the last commit). Schema navigation tests use fixtures; the sibling
+  # ai-engineer-db-contract checkout is absent here on purpose.
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      # pnpm's version is the one package.json pins (packageManager), installed on Node 24.
+      - run: npm install --global "$(node -p "require('./package.json').packageManager")"
+      - run: pnpm install --frozen-lockfile
+      - name: ./dev check
+        env:
+          SDLC_TRACE: warn
+        run: ./dev check
+
+  # Provenance (SPEC-03 K1; Mission Control SPEC-02 §5): every commit since the 2026-11-18 cutover ends with `Refs:`
+  # naming an id. Warn-only until the owner switches SDLC_TRACE to block: gaps are printed, the job passes. Ids held
+  # outside this repository (B08-S<n>, D-<n>, AS-S<n>, AS-D<n>, ADR-NNNN) are noted, not checked: those checkouts are
+  # absent on CI. OVE ids are checked for shape only (no Linear snapshot on CI).
+  provenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - name: Provenance trailers (warn-only)
+        env:
+          SDLC_TRACE: warn
+          BEFORE: ${{ github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -n "$BASE" ]; then range="$BASE..HEAD"
+          elif [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then range="$BEFORE..HEAD"
+          else range="HEAD~1..HEAD"; fi
+          echo "range: $range"
+          python3 -X utf8 docs/tools/trace.py check --range "$range"
