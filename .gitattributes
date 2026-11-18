@@ -1,0 +1,6 @@
+# Files that must keep LF on every checkout: shell entry points run by sh on Linux CI and in git hooks.
+/dev text eol=lf
+scripts/dev/hooks/* text eol=lf
+*.py text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
