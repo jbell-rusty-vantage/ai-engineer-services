@@ -50,7 +50,7 @@ Records, short names:
 [Build 08](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-08-KNOWLEDGE-LOOP.md) ·
 [loop-4 module](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-08-LOOP-4-MODULE.md) ·
 [loop-4 selection](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-08-LOOP-4-SELECTION.md) ·
-[loop-8 handoff](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/NEXT-SESSION-BUILD-08-AFTER-LOOP-8.md) ·
+[loop-8 handoff](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/archive/handoffs/NEXT-SESSION-BUILD-08-AFTER-LOOP-8.md) ·
 [course README](../../../../aiengineer/ai-engineer-db-contract/scripts/knowledge-lab/course/README.md) ·
 [HOLLODECK](../../../../HOLLODECK.md) ·
 [NORTH-STAR](../../../../NORTH-STAR.md)
@@ -119,7 +119,7 @@ Writing rules followed: [writing-for-agents](../../../../platform/mission-contro
 | The fact-state table | Build 08 [§22.4](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-08-KNOWLEDGE-LOOP.md#s22) (verdict kinds), [§24](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-08-KNOWLEDGE-LOOP.md#s24) (contradicted claims stay visible), [§28.1](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-08-KNOWLEDGE-LOOP.md#s28) (qualified restatements) | lab-proven; the "assert only verified" line is the task brief's rule |
 | Read the best-assessed sources first; record the sources used; outcomes are evidence about sources | [NORTH-STAR §3 rule 4](../../../../NORTH-STAR.md#taste) | direction |
 | Score needs a minimum of checked claims | Build 08 §23 row 6 (D-69) | accepted |
-| Bind each claim to its section | Build 08 §28.3 Q4 and [§29.4](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-08-KNOWLEDGE-LOOP.md#s29) (RV14 gap); [loop-8 handoff §2](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/NEXT-SESSION-BUILD-08-AFTER-LOOP-8.md#s2) candidate N | open item; the fix is proposed |
+| Bind each claim to its section | Build 08 §28.3 Q4 and [§29.4](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-08-KNOWLEDGE-LOOP.md#s29) (RV14 gap); [loop-8 handoff §2](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/archive/handoffs/NEXT-SESSION-BUILD-08-AFTER-LOOP-8.md#s2) candidate N | open item; the fix is proposed |
 | Four binding kinds (covers, uses, supports or contradicts, source) | loop-4 selection §8; [loop4_product.py](../../../../aiengineer/ai-engineer-db-contract/scripts/knowledge-lab/loop4_product.py) | lab-proven |
 | Declared version range and resolved version; breaking first; only older heads | workspace task page "Which of our modules does a new software release affect?"; Build 08 §22.5 Q11 | lab-proven; the task page is model-assisted and unreviewed |
 | Bind the restated claim, not the attributed one | Build 08 §28.1 (D-80) | lab-proven, awaiting John's review of loop 7 |
