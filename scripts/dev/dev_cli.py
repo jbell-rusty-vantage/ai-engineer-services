@@ -43,7 +43,7 @@ PLANES = ROOT / "scripts" / "dev" / "planes.py"
 HOOK_MARKER = "# aieng-service-provenance-managed-v1"
 WORKSPACE_ROOT = ROOT.parents[1]
 DB_CONTRACT = ROOT.parent / "ai-engineer-db-contract"
-REVIEW_WORKSPACE = WORKSPACE_ROOT / "platform" / "ai-engineer-research-2026-11-02" / "10-review-workspace"
+REVIEW_WORKSPACE = WORKSPACE_ROOT / "platform" / "ai-engineer-research-2026-11-02" / "schema-units"
 ENTRYPOINTS = ["AGENTS.md", "features/README.md", "docs/ENVIRONMENT.md", "README.md"]
 SIBLINGS = {
     "ai-engineer-db-contract": DB_CONTRACT,

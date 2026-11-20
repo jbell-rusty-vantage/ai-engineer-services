@@ -41,16 +41,16 @@ Status words used below:
 - **inference**: my own step from the sources. Each one is listed again in section 6.
 
 Records, short names:
-[SERVICE-MODEL](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/EDUCATION-SERVICE/SERVICE-MODEL.md) ·
-[SERVICE-SPEC](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/EDUCATION-SERVICE/SERVICE-SPEC.md) ·
-[CONSOLIDATED-MODEL](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/FEATURE-CONSOLIDATION/CONSOLIDATED-MODEL.md) ·
-[Build 01](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-01-COURSE-FOUNDATION.md) ·
-[Build 05](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-05-CONTENT-AND-PROJECTS.md) ·
-[Build 07](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-07-RESEARCH-TO-CONTENT.md) ·
-[Build 08](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-08-KNOWLEDGE-LOOP.md) ·
-[loop-4 module](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-08-LOOP-4-MODULE.md) ·
-[loop-4 selection](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-08-LOOP-4-SELECTION.md) ·
-[loop-8 handoff](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/archive/handoffs/NEXT-SESSION-BUILD-08-AFTER-LOOP-8.md) ·
+[SERVICE-MODEL](../../../../platform/ai-engineer-research-2026-11-02/schema-units/provenance/records/EDUCATION-SERVICE/SERVICE-MODEL.md) ·
+[SERVICE-SPEC](../../../../platform/ai-engineer-research-2026-11-02/schema-units/provenance/records/EDUCATION-SERVICE/SERVICE-SPEC.md) ·
+[CONSOLIDATED-MODEL](../../../../platform/ai-engineer-research-2026-11-02/schema-units/provenance/records/FEATURE-CONSOLIDATION/CONSOLIDATED-MODEL.md) ·
+[Build 01](../../../../platform/ai-engineer-research-2026-11-02/schema-units/provenance/records/BUILD-01-COURSE-FOUNDATION.md) ·
+[Build 05](../../../../platform/ai-engineer-research-2026-11-02/schema-units/provenance/records/BUILD-05-CONTENT-AND-PROJECTS.md) ·
+[Build 07](../../../../platform/ai-engineer-research-2026-11-02/schema-units/provenance/records/BUILD-07-RESEARCH-TO-CONTENT.md) ·
+[Build 08](../../../../platform/ai-engineer-research-2026-11-02/schema-units/provenance/records/BUILD-08-KNOWLEDGE-LOOP.md) ·
+[loop-4 module](../../../../platform/ai-engineer-research-2026-11-02/schema-units/provenance/records/BUILD-08-LOOP-4-MODULE.md) ·
+[loop-4 selection](../../../../platform/ai-engineer-research-2026-11-02/schema-units/provenance/records/BUILD-08-LOOP-4-SELECTION.md) ·
+[loop-8 handoff](../../../../platform/ai-engineer-research-2026-11-02/schema-units/archive/handoffs/NEXT-SESSION-BUILD-08-AFTER-LOOP-8.md) ·
 [course README](../../../../aiengineer/ai-engineer-db-contract/scripts/knowledge-lab/course/README.md) ·
 [HOLLODECK](../../../../HOLLODECK.md) ·
 [NORTH-STAR](../../../../NORTH-STAR.md)
@@ -78,14 +78,14 @@ Writing rules followed: [writing-for-agents](../../../../platform/mission-contro
 | --- | --- | --- |
 | Content ends in the learner's own work and demonstrated mastery | HOLLODECK, "What the student experiences"; [root AGENTS](../../../../AGENTS.md), education preview direction | direction |
 | Every factual statement traces to verified knowledge; traceability is the required experience | SERVICE-MODEL §4; Build 08 §12.3 (circularity rule, accepted as R2.1 in §12.9) | accepted |
-| Verified only through Knowledge Services admission of external evidence | [Build 08 §23](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-08-KNOWLEDGE-LOOP.md#s23) row 4 (keep the gate, D-55); NORTH-STAR §3 rule 5 | accepted |
+| Verified only through Knowledge Services admission of external evidence | [Build 08 §23](../../../../platform/ai-engineer-research-2026-11-02/schema-units/provenance/records/BUILD-08-KNOWLEDGE-LOOP.md#s23) row 4 (keep the gate, D-55); NORTH-STAR §3 rule 5 | accepted |
 | What we generate is labelled ours and never grades itself | NORTH-STAR §3 rule 5; Build 08 §23 row 5 (D-61) | accepted |
 | Loop order: interview and pre-research, brief, build, use and critique, revision | SERVICE-MODEL §3; SERVICE-SPEC §6 "Discovery, build, use and revision" (EDU-D65–D68) | accepted |
-| Brief is a `brief` work; the interview is a conversation | Build 07 §3 "Reuse"; [Build 08 §22.8](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-08-KNOWLEDGE-LOOP.md#s22) | lab-proven |
+| Brief is a `brief` work; the interview is a conversation | Build 07 §3 "Reuse"; [Build 08 §22.8](../../../../platform/ai-engineer-research-2026-11-02/schema-units/provenance/records/BUILD-08-KNOWLEDGE-LOOP.md#s22) | lab-proven |
 | Interview turns verbatim; agent turns carry the retrieval used; nothing invented for the owner | Build 08 §22.8; loop-4 selection §5 | lab-proven |
 | Design backwards from the evidence of mastery; changed case | task brief for this skill; HOLLODECK capture field "Mastery prompt"; Build 01 R1.1 ("transfer to a changed input") | direction and proposed |
 | Map plus one complete module, then steerable batches | SERVICE-MODEL §2 and §6; SERVICE-SPEC §6 (EDU-D38, EDU-D41) | accepted |
-| Run every lesson before review | [Build 08 §26](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-08-KNOWLEDGE-LOOP.md#s26); course README | lab-proven (prototype) |
+| Run every lesson before review | [Build 08 §26](../../../../platform/ai-engineer-research-2026-11-02/schema-units/provenance/records/BUILD-08-KNOWLEDGE-LOOP.md#s26); course README | lab-proven (prototype) |
 | Agents propose, people review; release needs a human review of the exact closure | service skill "Rules"; command dispatch (`review_revision`, `freeze_release`); Build 08 §22.8 and §23 row 7 | code, accepted |
 | A changed claim opens a review, not an update | SERVICE-MODEL §2 "Keep material current" (EDU-D43–D47); SERVICE-SPEC §6 "A changed source identifies potentially affected material" | accepted; the SERVICE-SPEC sentence is proposed |
 | Availability lists | operations, payloads, MCP tools, CLI commands, command dispatch, all read 2026-11-15 | code |
@@ -98,7 +98,7 @@ Writing rules followed: [writing-for-agents](../../../../platform/mission-contro
 | What may contain what; exact child revisions at a position, recommended or optional | product API (`product.insert_revision`, parts); curriculum page | code |
 | A course is a map of outcomes, requirements, routes, prerequisites | SERVICE-MODEL §2 "Take a course" (EDU-D19–D25); Build 01 R1 schema accepted 2026-11-05 | accepted |
 | Later modules are honest map entries | Build 01 R1.1 | proposed text inside an accepted schema recommendation |
-| Module = the unit handed to review; one module released so far | Build 08 §23 row 7, [§27](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-08-KNOWLEDGE-LOOP.md#s27) row 9 | accepted (lab release) |
+| Module = the unit handed to review; one module released so far | Build 08 §23 row 7, [§27](../../../../platform/ai-engineer-research-2026-11-02/schema-units/provenance/records/BUILD-08-KNOWLEDGE-LOOP.md#s27) row 9 | accepted (lab release) |
 | Sizes | loop-4 module (seven sections, one activity); the lesson files beside the course README (24 to 59 lines); no record sets a limit | observation, inference |
 | Challenge, project, artifact "is not" wording | SERVICE-SPEC §4 "Proposed" paragraph; Build 05 accepted answers C1, C5, C7 | proposed plus accepted |
 | Artifact carries a digest, usage right and rights basis | CONSOLIDATED-MODEL §3; payloads; product API (`register_artifact`) | accepted, code |
@@ -116,10 +116,10 @@ Writing rules followed: [writing-for-agents](../../../../platform/mission-contro
 
 | Rule | Source | Status |
 | --- | --- | --- |
-| The fact-state table | Build 08 [§22.4](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-08-KNOWLEDGE-LOOP.md#s22) (verdict kinds), [§24](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-08-KNOWLEDGE-LOOP.md#s24) (contradicted claims stay visible), [§28.1](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-08-KNOWLEDGE-LOOP.md#s28) (qualified restatements) | lab-proven; the "assert only verified" line is the task brief's rule |
+| The fact-state table | Build 08 [§22.4](../../../../platform/ai-engineer-research-2026-11-02/schema-units/provenance/records/BUILD-08-KNOWLEDGE-LOOP.md#s22) (verdict kinds), [§24](../../../../platform/ai-engineer-research-2026-11-02/schema-units/provenance/records/BUILD-08-KNOWLEDGE-LOOP.md#s24) (contradicted claims stay visible), [§28.1](../../../../platform/ai-engineer-research-2026-11-02/schema-units/provenance/records/BUILD-08-KNOWLEDGE-LOOP.md#s28) (qualified restatements) | lab-proven; the "assert only verified" line is the task brief's rule |
 | Read the best-assessed sources first; record the sources used; outcomes are evidence about sources | [NORTH-STAR §3 rule 4](../../../../NORTH-STAR.md#taste) | direction |
 | Score needs a minimum of checked claims | Build 08 §23 row 6 (D-69) | accepted |
-| Bind each claim to its section | Build 08 §28.3 Q4 and [§29.4](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-08-KNOWLEDGE-LOOP.md#s29) (RV14 gap); [loop-8 handoff §2](../../../../platform/ai-engineer-research-2026-11-02/10-review-workspace/archive/handoffs/NEXT-SESSION-BUILD-08-AFTER-LOOP-8.md#s2) candidate N | open item; the fix is proposed |
+| Bind each claim to its section | Build 08 §28.3 Q4 and [§29.4](../../../../platform/ai-engineer-research-2026-11-02/schema-units/provenance/records/BUILD-08-KNOWLEDGE-LOOP.md#s29) (RV14 gap); [loop-8 handoff §2](../../../../platform/ai-engineer-research-2026-11-02/schema-units/archive/handoffs/NEXT-SESSION-BUILD-08-AFTER-LOOP-8.md#s2) candidate N | open item; the fix is proposed |
 | Four binding kinds (covers, uses, supports or contradicts, source) | loop-4 selection §8; [loop4_product.py](../../../../aiengineer/ai-engineer-db-contract/scripts/knowledge-lab/loop4_product.py) | lab-proven |
 | Declared version range and resolved version; breaking first; only older heads | workspace task page "Which of our modules does a new software release affect?"; Build 08 §22.5 Q11 | lab-proven; the task page is model-assisted and unreviewed |
 | Bind the restated claim, not the attributed one | Build 08 §28.1 (D-80) | lab-proven, awaiting John's review of loop 7 |

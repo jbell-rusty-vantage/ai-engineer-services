@@ -102,7 +102,7 @@ pnpm eval:consumer-surface                      # with the lab stack's AIENG_DB_
 
 ## Lab proofs
 
-With the disposable lab stack running (created from `ai-engineer-db-contract`; the BellLabs workspace record is `platform/ai-engineer-research-2026-11-02/10-review-workspace/reviews/BUILD-06-SERVICE-SURFACES.md`, which is not part of this repository):
+With the disposable lab stack running (created from `ai-engineer-db-contract`; the BellLabs workspace record is `platform/ai-engineer-research-2026-11-02/schema-units/provenance/records/BUILD-06-SERVICE-SURFACES.md`, which is not part of this repository):
 
 ```bash
 # product schema journey through the API (150 checks; 5 storage-boundary checks run on the database surface)
