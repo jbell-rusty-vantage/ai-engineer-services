@@ -9,6 +9,7 @@ freezing and audit, and this service adds transports, edge validation and server
 **Consumer surface (2026-11-15):** knowledge reads (`search_knowledge`, `get_claim`, `get_entity`, `get_fact_evidence`, `list_entity_changes`, `get_summary_evidence`, `get_source`, `list_due`), schema navigation, a guide and a describe, on every transport (77 public operations, 19 MCP tools). Unit-tested, and the knowledge reads are proven on the disposable lab stack (not deployed): they need database contract migration `20261115130000` (Build 08 D-82), which gives a signed-in request the deployment's knowledge tenant. Against a database without it they answer `NOT_AVAILABLE`, never an empty result. A client grant needs the `read` scope for them.
 **Authoring surface (2026-11-16):** the guide serves the method skills as topics (`content-authoring` with its five references, `ai-engineer-knowledge-charter`), bundled into the built packages; `draft_work` carries a revision's structure (parts, outcomes, requirements with their routes, prerequisites, runtime, statements); `inspect_authoring` reads works, a revision and the exposure preview; `request_review` leaves a hand-over note for the reviewer (77 public operations, 21 MCP tools). Unit-tested; the lab result of the authoring flow is in the consumer evaluation scorecard. Not deployed.
 **Read-back and hand-over (2026-11-16, later):** `list_workspaces`, `get_revision_structure`, `mark_ready_for_review` and `list_reviews` (database contract 0.9.0, migration `20261116140000`) through `inspect_authoring`, `request_review` and `aieng authoring workspaces|structure|ready|reviews` (81 public operations, still 21 MCP tools). Unit-tested and proven on the disposable lab stack by the consumer evaluation; not deployed. Against a database without that migration the service answers them `NOT_AVAILABLE` (the database says `UNKNOWN_OPERATION`).
+**Database release check (2026-11-20, VER-S1):** the database contract is pinned as a package under `vendor/`, and the API and the remote MCP server ask the database which release it is before they serve, refuse to start on any but the pinned one (`AIENG_DB_RELEASE_CHECK` is `enforce`, `warn` or `off`) and report it on `GET /health`. Unit-tested with the contract's shared cases; not run against a live database. See [database release check](features/database-release-check.md).
 See [architecture](docs/ARCHITECTURE.md) for what exists and what does not.
 
 GitHub: [`jbell-rusty-vantage/ai-engineer-services`](https://github.com/jbell-rusty-vantage/ai-engineer-services) (public). Schema authority: [`jbell-rusty-vantage/agent-engineer-db-contract`](https://github.com/jbell-rusty-vantage/agent-engineer-db-contract).
@@ -18,7 +19,8 @@ GitHub: [`jbell-rusty-vantage/ai-engineer-services`](https://github.com/jbell-ru
 | Package | Name | Role |
 | --- | --- | --- |
 | `packages/contracts` | `@aiengineer/service-contracts` | Operation catalog, payload schemas, error codes, request shapes, `ProductPort`; the surface catalog (jobs, MCP tools, CLI commands) and the guide |
-| `packages/application` | `@aiengineer/service-application` | Product use cases over the database gateway, knowledge reads, schema navigation, object storage and artifact custody |
+| `packages/application` | `@aiengineer/service-application` | Product use cases over the database gateway, knowledge reads, schema navigation, object storage and artifact custody; the database release check |
+| `vendor` | `@aiengineer/database-contract` | The pinned database contract package (a tarball packed by `ai-engineer-db-contract`); `packages/application` depends on it |
 | `packages/client` | `@aiengineer/service-client` | Typed HTTP client and site publishing; used by the CLI, the local MCP server and the web app |
 | `apps/api` | `@aiengineer/service-api` | HTTP API (Fastify) |
 | `apps/mcp` | `@aiengineer/service-mcp` | MCP server: local stdio (harness) and remote streamable HTTP (agents without a sandbox) |
@@ -59,7 +61,9 @@ reads the generated schema workspace at `AIENG_SCHEMA_WORKSPACE_DIR` (default: t
 `../ai-engineer-db-contract/workspace`). Local by default: the `dev`/`start` scripts load only the git-ignored
 `.env.lab` (the loopback lab stack); a remote database also needs `AIENG_DB_REMOTE_CONFIRM` set to its project ref,
 otherwise startup refuses. See [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md#local-by-default) (also the lab
-`supabase status` mapping).
+`supabase status` mapping). Startup also refuses a database that is not the release of the pinned contract
+(`./dev status`, `contract.pinned`); a lab built from drafts must be stamped first, or started with
+`AIENG_DB_RELEASE_CHECK=warn` ([release check](docs/ENVIRONMENT.md#release-check)).
 
 ```bash
 node apps/api/dist/index.js          # http://127.0.0.1:3200  (AIENG_API_HOST / AIENG_API_PORT)

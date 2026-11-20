@@ -1,6 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { describeDatabaseTarget, isLoopbackHost, loadServiceConfig, requiredEnvironment } from "./config.js";
+import {
+  checkMode,
+  databaseReleaseCheckName,
+  describeDatabaseTarget,
+  isLoopbackHost,
+  loadServiceConfig,
+  requiredEnvironment,
+} from "./config.js";
 
 const remote = {
   AIENG_DB_URL: "https://fakeprojectref.supabase.co",
@@ -79,6 +86,29 @@ describe("loadServiceConfig", () => {
   it("names the missing variable and trims values", () => {
     expect(() => requiredEnvironment({}, "AIENG_DB_SECRET_KEY")).toThrow("MISSING_ENVIRONMENT: AIENG_DB_SECRET_KEY");
     expect(requiredEnvironment({ A: " v " }, "A")).toBe("v");
+  });
+});
+
+describe("the database release check mode", () => {
+  it("is enforce unless AIENG_DB_RELEASE_CHECK says warn or off, and refuses any other word", () => {
+    expect(loadServiceConfig(lab).databaseReleaseCheck).toBe("enforce");
+    expect(loadServiceConfig({ ...lab, AIENG_DB_RELEASE_CHECK: "warn" }).databaseReleaseCheck).toBe("warn");
+    expect(loadServiceConfig({ ...lab, AIENG_DB_RELEASE_CHECK: " OFF " }).databaseReleaseCheck).toBe("off");
+    expect(checkMode({})).toBe("enforce");
+    expect(() => loadServiceConfig({ ...lab, AIENG_DB_RELEASE_CHECK: "strict" })).toThrow(
+      "AIENG_DB_RELEASE_CHECK must be enforce, warn or off (got strict)",
+    );
+    expect(() => checkMode({ AIENG_DB_RELEASE_CHECK: "" })).toThrow(
+      "AIENG_DB_RELEASE_CHECK must be enforce, warn or off",
+    );
+  });
+
+  it("is registered, documented and listed in the example file under the contract's name", () => {
+    expect(databaseReleaseCheckName).toBe("AIENG_DB_RELEASE_CHECK");
+    for (const file of ["../../../config/env.registry.yaml", "../../../docs/ENVIRONMENT.md", "../../../.env.example"]) {
+      const names = readFileSync(new URL(file, import.meta.url), "utf8").includes(databaseReleaseCheckName);
+      expect(names, `${file} names ${databaseReleaseCheckName}`).toBe(true);
+    }
   });
 });
 

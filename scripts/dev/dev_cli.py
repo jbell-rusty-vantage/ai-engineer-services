@@ -8,8 +8,9 @@ Nothing here opens a database session except ``./dev db`` (read-only, ``--plane`
 ``status`` only checks whether loopback ports accept a connection.
 
   ./dev status                  orient in one call (JSON): branch, ahead/behind, dirty files, the
-                                database contract it consumes (unpinned today), the database target
-                                an unconfigured start binds to, which local services answer
+                                database contract it pins (vendor/) and so the database release it
+                                starts on, the database target an unconfigured start binds to, which
+                                local services answer and the database release each reports
   ./dev doctor                  read-only readiness (JSON); each failure names its fix
   ./dev check                   the fast gate: pnpm typecheck, pnpm test, pnpm lint, then
                                 planes.py planes check and the provenance check
@@ -27,12 +28,14 @@ Exit codes: 0 ok, 1 a check or test failed, 2 usage error, 3 the environment is 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
 import socket
 import subprocess
 import sys
+import tarfile
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -43,6 +46,9 @@ PLANES = ROOT / "scripts" / "dev" / "planes.py"
 HOOK_MARKER = "# aieng-service-provenance-managed-v1"
 WORKSPACE_ROOT = ROOT.parents[1]
 DB_CONTRACT = ROOT.parent / "ai-engineer-db-contract"
+# The package that pins the database contract, and the package it pins (features/database-release-check.md).
+APPLICATION = ROOT / "packages" / "application"
+CONTRACT_PACKAGE = "@aiengineer/database-contract"
 REVIEW_WORKSPACE = WORKSPACE_ROOT / "platform" / "ai-engineer-research-2026-11-02" / "schema-units"
 ENTRYPOINTS = ["AGENTS.md", "features/README.md", "docs/ENVIRONMENT.md", "README.md"]
 SIBLINGS = {
@@ -128,16 +134,61 @@ def read_json(path: Path) -> dict[str, object] | None:
 # ------------------------------------------------------------------------------------- status
 
 
-def contract() -> dict[str, object]:
-    """The database contract this service consumes. No version is pinned in this repository: the
-    service calls whatever the target database runs, and an operation it lacks answers NOT_AVAILABLE."""
+def pinned_contract() -> dict[str, object]:
+    """The database contract the service pins: the tarball its application package depends on
+    (``vendor/``). Read with the standard library, so it answers before ``pnpm install``. The
+    version comes from the package's own ``contract.version.json``; none is written here."""
 
+    manifest = read_json(APPLICATION / "package.json") or {}
+    dependencies = manifest.get("dependencies")
+    reference = dependencies.get(CONTRACT_PACKAGE) if isinstance(dependencies, dict) else None
+    pin: dict[str, object] = {
+        "package": CONTRACT_PACKAGE,
+        "reference": reference,
+        "tarball": None,
+        "sha256": None,
+        "version": None,
+        "migration_head": None,
+    }
+    if not isinstance(reference, str) or not reference.startswith("file:"):
+        return pin
+    tarball = (APPLICATION / reference.removeprefix("file:")).resolve()
+    pin["tarball"] = tarball.relative_to(ROOT).as_posix() if tarball.is_relative_to(ROOT) else str(tarball)
+    if not tarball.is_file():
+        return pin
+    pin["sha256"] = hashlib.sha256(tarball.read_bytes()).hexdigest()
+    try:
+        with tarfile.open(tarball, "r:gz") as archive:
+            member = archive.extractfile("package/contract.version.json")
+            record = json.loads(member.read().decode("utf-8")) if member else None
+    except (OSError, tarfile.TarError, KeyError, ValueError):
+        record = None
+    if isinstance(record, dict):
+        pin["version"] = record.get("version")
+        pin["migration_head"] = record.get("migration_head")
+    return pin
+
+
+def contract() -> dict[str, object]:
+    """The database contract this service pins and the schema workspace it would read. The pinned
+    version is the database release the service starts on; a running transport reports the release
+    it found under ``local_services`` (features/database-release-check.md)."""
+
+    pin = pinned_contract()
+    installed = read_json(
+        APPLICATION / "node_modules" / "@aiengineer" / "database-contract" / "contract.version.json"
+    )
     workspace_dir = Path(os.environ.get("AIENG_SCHEMA_WORKSPACE_DIR") or DB_CONTRACT / "workspace")
     fingerprint = read_json(workspace_dir / "fingerprint.json") or {}
     inputs = fingerprint.get("inputs") if isinstance(fingerprint.get("inputs"), dict) else {}
     sibling = read_json(DB_CONTRACT / "contract.version.json") or {}
     return {
-        "pinned": "unpinned",
+        "pinned": pin["version"] or "unreadable",
+        "pin": {**pin, "installed_version": (installed or {}).get("version")},
+        "database_release": {
+            "range": pin["version"],
+            "check": "AIENG_DB_RELEASE_CHECK: enforce (default), warn or off; a transport asks when it starts",
+        },
         "schema_workspace": {
             "path": str(workspace_dir),
             "present": workspace_dir.is_dir(),
@@ -178,19 +229,29 @@ def database_target() -> dict[str, object]:
     }
 
 
-def answers(port: int, health: bool) -> str:
+def answers(port: int, health: bool) -> dict[str, object]:
+    """Whether a loopback port answers. A service with /health also says which database release it
+    found when it started (mode, range, release, state, verdict)."""
+
     try:
         with socket.create_connection(("127.0.0.1", port), timeout=0.4):
             pass
     except OSError:
-        return "closed"
+        return {"state": "closed"}
     if not health:
-        return "open"
+        return {"state": "open"}
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=1.5) as response:
-            return "healthy" if response.status == 200 else f"http {response.status}"
+            if response.status != 200:
+                return {"state": f"http {response.status}"}
+            try:
+                body = json.loads(response.read().decode("utf-8"))
+            except ValueError:
+                body = None
     except (urllib.error.URLError, OSError):
-        return "open (no /health)"
+        return {"state": "open (no /health)"}
+    release = body.get("databaseRelease") if isinstance(body, dict) else None
+    return {"state": "healthy", "database_release": release}
 
 
 def local_services() -> dict[str, dict[str, object]]:
@@ -202,7 +263,7 @@ def local_services() -> dict[str, dict[str, object]]:
         "lab-api (lab-aieng-build04)": (55621, False),
         "lab-postgres (lab-aieng-build04)": (55622, False),
     }
-    return {name: {"port": port, "state": answers(port, health)} for name, (port, health) in probes.items()}
+    return {name: {"port": port, **answers(port, health)} for name, (port, health) in probes.items()}
 
 
 def status() -> int:
@@ -214,12 +275,30 @@ def status() -> int:
             behind, ahead = int(counts[0]), int(counts[1])
     porcelain = [line for line in git("status", "--porcelain").splitlines() if line]
     target = database_target()
+    consumed = contract()
+    pin: dict[str, object] = consumed["pin"]  # type: ignore[assignment]
     snapshot = ROOT / ".sdlc" / "trace" / "linear-snapshot.json"
     hints = []
     if ahead:
         hints.append(f"{ahead} commit(s) not pushed to {up}")
     if not (ROOT / "node_modules").is_dir():
         hints.append("node_modules is absent: pnpm install --frozen-lockfile")
+    elif pin["version"] and pin["installed_version"] != pin["version"]:
+        hints.append(
+            f"node_modules holds database contract {pin['installed_version']}; the pin is "
+            f"{pin['version']}: pnpm install --frozen-lockfile"
+        )
+    if not pin["version"]:
+        hints.append(
+            "the pinned database contract cannot be read (vendor/, packages/application/package.json): "
+            "features/database-release-check.md"
+        )
+    elif consumed["sibling_checkout_version"] not in (None, pin["version"]):
+        hints.append(
+            f"the sibling ai-engineer-db-contract checkout is at {consumed['sibling_checkout_version']}; "
+            f"this service pins {pin['version']} and starts only on a database of that release "
+            "(features/database-release-check.md)"
+        )
     if target["env_file"] is None:
         hints.append("no .env.lab: copy .env.example and fill it from the lab (docs/ENVIRONMENT.md)")
     elif target["env_lab_is_loopback"] is False:
@@ -242,7 +321,7 @@ def status() -> int:
                 "files": [line[3:] for line in porcelain[:40]],
                 "truncated": len(porcelain) > 40,
             },
-            "contract": contract(),
+            "contract": consumed,
             "database_target": target,
             "local_services": local_services(),
             "hooks": {"commit-msg": hook_state(), "dir": str(hooks_dir())},
@@ -290,6 +369,14 @@ def doctor() -> int:
     )
     modules = ROOT / "node_modules"
     record("node_modules", modules.is_dir(), str(modules), "pnpm install --frozen-lockfile")
+    pin = pinned_contract()
+    record(
+        "pinned database contract",
+        bool(pin["version"]),
+        f"{pin['tarball']} names {pin['version']}" if pin["version"] else f"unreadable: {pin['reference']}",
+        "restore the tarball under vendor/ (git checkout -- vendor) or repair the file: reference in "
+        "packages/application/package.json (features/database-release-check.md)",
+    )
     target = database_target()
     record(
         ".env.lab",

@@ -38,6 +38,10 @@ class FakeDatabase implements DatabaseGateway {
       state: payload.verified_sha256 === this.registeredSha || payload.artifact_id === "m1" ? "available" : "pending",
     };
   }
+
+  async databaseRelease(): Promise<unknown> {
+    return null;
+  }
 }
 
 class MemoryStorage implements ObjectStorage {

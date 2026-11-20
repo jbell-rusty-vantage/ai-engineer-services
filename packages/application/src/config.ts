@@ -9,10 +9,12 @@ export interface ServiceConfig {
   readonly databaseUrl: string;
   /** Public key used with the caller's own session (`AIENG_DB_PUBLISHABLE_KEY`). */
   readonly databasePublishableKey: string;
-  /** Service key for byte custody and worker calls only (`AIENG_DB_SECRET_KEY`). */
+  /** Service key for byte custody, worker calls and the release read at startup only (`AIENG_DB_SECRET_KEY`). */
   readonly databaseSecretKey: string;
   /** Project ref (`AIENG_DB_PROJECT_REF`); absent only for a loopback lab stack. */
   readonly projectRef?: string;
+  /** How a transport treats the database's release when it starts (`AIENG_DB_RELEASE_CHECK`; default `enforce`). */
+  readonly databaseReleaseCheck: DatabaseReleaseCheckMode;
 }
 
 /** What may be logged about the selected database: plane, location, ref and host, never a key or a full URL. */
@@ -28,6 +30,24 @@ export function requiredEnvironment(environment: Environment, name: string, hint
   const value = environment[name]?.trim();
   if (!value) throw new Error(`MISSING_ENVIRONMENT: ${name}${hint ? ` (${hint})` : ""}`);
   return value;
+}
+
+/**
+ * The variable that sets the mode of the database release check (features/database-release-check.md). The name is the
+ * database contract's, shared with Knowledge Services and Mission Control.
+ */
+export const databaseReleaseCheckName = "AIENG_DB_RELEASE_CHECK";
+export const databaseReleaseCheckModes = ["enforce", "warn", "off"] as const;
+/** `enforce` refuses to start on another release, `warn` always starts and logs the verdict, `off` does not ask. */
+export type DatabaseReleaseCheckMode = (typeof databaseReleaseCheckModes)[number];
+
+/** `enforce` (the default when the variable is unset), `warn` or `off`; any other word is refused. */
+export function checkMode(environment: Environment): DatabaseReleaseCheckMode {
+  const raw = environment[databaseReleaseCheckName];
+  const mode = (raw ?? "enforce").trim().toLowerCase();
+  const known = databaseReleaseCheckModes.find((candidate) => candidate === mode);
+  if (!known) throw new Error(`${databaseReleaseCheckName} must be enforce, warn or off (got ${raw})`);
+  return known;
 }
 
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
@@ -66,6 +86,7 @@ export function loadServiceConfig(environment: Environment = process.env): Servi
     databasePublishableKey: requiredEnvironment(environment, "AIENG_DB_PUBLISHABLE_KEY"),
     databaseSecretKey: requiredEnvironment(environment, "AIENG_DB_SECRET_KEY"),
     ...(projectRef ? { projectRef } : {}),
+    databaseReleaseCheck: checkMode(environment),
   };
 }
 

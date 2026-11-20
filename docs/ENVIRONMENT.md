@@ -2,7 +2,7 @@
 
 Names only. Source: `config/env.registry.yaml`; database values: `BellLabs/.secrets/aieng-db.env` (owner-held, never committed). There are no aliases or fallback names.
 
-One database reader: `packages/application/src/config.ts` (`loadServiceConfig`, shared `requiredEnvironment`). The API and remote MCP entry points call it once, pass the result to `createProductService`, and log `describeDatabaseTarget` (plane, ref, host only). The lab scripts and the local MCP server import `requiredEnvironment` from the same module.
+One database reader: `packages/application/src/config.ts` (`loadServiceConfig`, shared `requiredEnvironment`, `checkMode`). The API and remote MCP entry points call it once, pass the result to `createProductService` and `createDatabaseReleaseCheck`, and log `describeDatabaseTarget` (plane, ref, host only). The lab scripts and the local MCP server import `requiredEnvironment` from the same module.
 
 <a id="local-by-default"></a>
 ## Local by default
@@ -20,9 +20,23 @@ One database reader: `packages/application/src/config.ts` (`loadServiceConfig`, 
 | --- | --- | --- |
 | `AIENG_DB_URL` | API, remote MCP (`loadServiceConfig`); lab scripts | startup throws `MISSING_ENVIRONMENT: AIENG_DB_URL`; a path, query or fragment throws `INVALID_AIENG_DB_URL` |
 | `AIENG_DB_PUBLISHABLE_KEY` | same | `MISSING_ENVIRONMENT`; every caller request lacks its `apikey` |
-| `AIENG_DB_SECRET_KEY` | same | `MISSING_ENVIRONMENT`; no byte custody or worker calls |
+| `AIENG_DB_SECRET_KEY` | same | `MISSING_ENVIRONMENT`; no byte custody, worker calls or release read at startup |
 | `AIENG_DB_PROJECT_REF` | `loadServiceConfig` | not in the URL host: `AIENG_DB_PROJECT_REF_MISMATCH`; unset with a non-loopback URL: `MISSING_ENVIRONMENT` |
 | `AIENG_DB_REMOTE_CONFIRM` | `loadServiceConfig` | unset or not the project ref with a non-loopback URL: `REMOTE_DATABASE_NOT_CONFIRMED` ([local by default](#local-by-default)) |
+| `AIENG_DB_RELEASE_CHECK` | `loadServiceConfig` (`checkMode`) | unset: `enforce`; any word but `enforce`, `warn` or `off` (an empty value included) refuses when the configuration loads ([release check](#release-check)) |
+
+<a id="release-check"></a>
+## Release check
+
+`AIENG_DB_RELEASE_CHECK` sets how the API and the remote MCP server treat the database's release when they start ([database release check](../features/database-release-check.md)). The name is the database contract's, shared with Knowledge Services and Mission Control.
+
+| Value | A transport that starts |
+| --- | --- |
+| `enforce` (default) | asks `api.database_release()` and refuses (`AIENG_DB_RELEASE_REFUSED`) unless the database states a release in the service's range, which is the version of the pinned contract package |
+| `warn` | asks, logs the verdict and starts whatever it is |
+| `off` | does not ask |
+
+The read uses `AIENG_DB_SECRET_KEY`: no caller exists at startup and the function is not executable by `anon`. Set the variable in the process environment, or in `.env.lab` for a lab that is not stamped with the pinned release.
 
 ## Service and client
 

@@ -1,4 +1,10 @@
-import { type ProductService, SessionProductPort } from "@aiengineer/service-application";
+import {
+  type DatabaseReleaseCheck,
+  type DatabaseReleaseStatus,
+  databaseReleaseStatus,
+  type ProductService,
+  SessionProductPort,
+} from "@aiengineer/service-application";
 import { headerNames, type SchemaPort } from "@aiengineer/service-contracts";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -8,6 +14,11 @@ export interface RemoteMcpHostOptions {
   readonly service: ProductService;
   /** Schema navigation, read in process from the generated schema workspace. */
   readonly schema?: SchemaPort;
+  /**
+   * The database release check (`createDatabaseReleaseCheck`). It runs once when the host starts, before any request
+   * is served; a rejection (enforce mode on a release outside the service's range) stops the start.
+   */
+  readonly databaseRelease: DatabaseReleaseCheck;
 }
 
 /**
@@ -16,7 +27,12 @@ export interface RemoteMcpHostOptions {
  */
 export function buildRemoteMcpHost(options: RemoteMcpHostOptions): FastifyInstance {
   const app = Fastify({ logger: false, bodyLimit: 32 * 1024 * 1024 });
-  app.get("/health", async () => ({ status: "ok" }));
+  // The database is asked for its release once, when the host starts; a refused release never listens.
+  let databaseRelease: DatabaseReleaseStatus | undefined;
+  app.addHook("onReady", async () => {
+    databaseRelease = databaseReleaseStatus(await options.databaseRelease());
+  });
+  app.get("/health", async () => ({ status: "ok", databaseRelease }));
   app.all("/mcp", async (request, reply) => {
     const authorization = request.headers.authorization;
     if (!authorization?.startsWith("Bearer "))

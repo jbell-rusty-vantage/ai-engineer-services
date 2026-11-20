@@ -691,7 +691,12 @@ describe("list_due", () => {
   });
 });
 
-const config = { databaseUrl: "http://db.test", databasePublishableKey: "publishable", databaseSecretKey: "secret" };
+const config = {
+  databaseUrl: "http://db.test",
+  databasePublishableKey: "publishable",
+  databaseSecretKey: "secret",
+  databaseReleaseCheck: "enforce",
+} as const;
 
 class RefusingGateway implements DatabaseGateway {
   readonly reads: ReadCall[] = [];
@@ -711,6 +716,9 @@ class RefusingGateway implements DatabaseGateway {
   }
   async worker(): Promise<JsonObject> {
     return {};
+  }
+  async databaseRelease(): Promise<unknown> {
+    return null;
   }
 }
 const storage: ObjectStorage = { put: async () => undefined, get: async () => new Uint8Array() };
@@ -821,6 +829,34 @@ describe("PostgrestKnowledgeDatabase", () => {
     await expect(new PostgrestDatabaseGateway(config, denied.fetchImpl).scope(client, "read")).rejects.toMatchObject({
       code: "CLIENT_SCOPE_DENIED",
     });
+  });
+
+  it("asks api.database_release with the service key: the startup read has no caller", async () => {
+    const answer = { format: "ai-engineer-database-release/1", release: "1.5.0", state: "current" };
+    const { seen, fetchImpl } = recordingFetch(answer);
+    await expect(new PostgrestDatabaseGateway(config, fetchImpl).databaseRelease()).resolves.toEqual(answer);
+    expect(seen).toMatchObject({
+      url: "http://db.test/rest/v1/rpc/database_release",
+      method: "POST",
+      body: {},
+      headers: { apikey: "secret", authorization: "Bearer secret", "content-profile": "api" },
+    });
+    const missing = recordingFetch({ code: "PGRST202", message: "Could not find the function" }, 404);
+    await expect(new PostgrestDatabaseGateway(config, missing.fetchImpl).databaseRelease()).rejects.toMatchObject({
+      code: "NOT_AVAILABLE",
+    });
+    const keyless = recordingFetch(answer);
+    const withoutKey = new PostgrestDatabaseGateway({ ...config, databaseSecretKey: "" }, keyless.fetchImpl);
+    await expect(withoutKey.databaseRelease()).rejects.toMatchObject({ code: "NOT_AVAILABLE" });
+    expect(keyless.seen.url).toBeUndefined();
+    // The read carries a time limit, so a database that never answers cannot hold a start forever.
+    let signal: unknown;
+    const timed = (async (_url: string, init: { signal?: AbortSignal }) => {
+      signal = init.signal;
+      return new Response(JSON.stringify(answer));
+    }) as unknown as typeof fetch;
+    await new PostgrestDatabaseGateway(config, timed).databaseRelease();
+    expect(signal).toBeInstanceOf(AbortSignal);
   });
 
   it("reads api views with PostgREST filters", async () => {

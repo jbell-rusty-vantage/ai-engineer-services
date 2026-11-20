@@ -32,9 +32,12 @@ import { mkdir, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { parseArgs, promisify } from "node:util";
 import {
+  checkDatabaseRelease,
+  createDatabaseReleaseCheck,
   createProductService,
   createSchemaWorkspace,
   type DatabaseGateway,
+  type DatabaseReleaseCheck,
   isLoopbackHost,
   loadServiceConfig,
   type ObjectStorage,
@@ -154,13 +157,20 @@ const object = (value: unknown) => (value && typeof value === "object" ? value :
 const rows = (value: unknown) => (Array.isArray(value) ? (value as Record<string, unknown>[]) : []);
 
 // ------------------------------------------------------------------ the service, in process on loopback
+const refuse = async (): Promise<never> => {
+  throw new ProductError("UNAVAILABLE", "evaluation without a database");
+};
+const noDatabase: DatabaseGateway = {
+  command: refuse,
+  read: refuse,
+  scope: refuse,
+  worker: refuse,
+  databaseRelease: refuse,
+};
+
 function serviceWithoutDatabase(): ProductService {
-  const refuse = async (): Promise<never> => {
-    throw new ProductError("UNAVAILABLE", "evaluation without a database");
-  };
-  const database: DatabaseGateway = { command: refuse, read: refuse, scope: refuse, worker: refuse };
   const storage: ObjectStorage = { put: refuse, get: refuse };
-  return new ProductService(database, storage);
+  return new ProductService(noDatabase, storage);
 }
 
 /** Whether AIENG_DB_URL is the loopback lab stack, checked before `readLabEnvironment` (which refuses anything else). */
@@ -182,12 +192,18 @@ async function userSession(): Promise<string> {
 }
 
 const accessToken = await userSession();
-const service = options.withoutDatabase ? serviceWithoutDatabase() : createProductService(loadServiceConfig());
+const config = options.withoutDatabase ? undefined : loadServiceConfig();
+const service = config ? createProductService(config) : serviceWithoutDatabase();
+// With a database both transports run the startup release check of the entry points (a lab must be stamped, or
+// AIENG_DB_RELEASE_CHECK=warn). Without one there is nothing to ask.
+const databaseRelease: DatabaseReleaseCheck = config
+  ? createDatabaseReleaseCheck(config)
+  : () => checkDatabaseRelease(noDatabase, { mode: "off", log: false });
 const schema = createSchemaWorkspace();
 const authorization = { authorization: `Bearer ${accessToken}` };
 
-const api = buildApiServer({ service, schema });
-const mcpHost = buildRemoteMcpHost({ service, schema });
+const api = buildApiServer({ service, schema, databaseRelease });
+const mcpHost = buildRemoteMcpHost({ service, schema, databaseRelease });
 await api.listen({ host: "127.0.0.1", port: 0 });
 await mcpHost.listen({ host: "127.0.0.1", port: 0 });
 const apiUrl = `http://127.0.0.1:${(api.server.address() as AddressInfo).port}`;

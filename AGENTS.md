@@ -8,7 +8,7 @@ stack only, not deployed. Map of what a user can reach: [features](features/READ
 ## Commands
 
 ```sh
-./dev status        # orient (JSON): branch, ahead/behind, dirty, contract consumed, database target, local services
+./dev status        # orient (JSON): branch, ahead/behind, dirty, contract pinned, database target, local services
 ./dev check         # the fast gate: pnpm typecheck, pnpm test, pnpm lint, planes check, provenance (warn-only)
 ./dev trace check   # provenance gaps since the 2026-11-18 cutover
 ```
@@ -26,7 +26,8 @@ Also `./dev doctor`, `./dev test unit|surface`, `./dev hooks install`, `./dev pl
 | The guide is the one place for how-to; skills hold method, name only real tools, never a schema, table or column ([rules](features/guide-and-describe.md#skills)) | `guide.test.ts` "the agent skill", "skills in the guide" |
 | MCP tools are few and task-shaped (21); none calls a person's decision (`review_revision`, `freeze_release`, `offer_release`, `accept_research`, `decide_delivery`, `decide_dataset_change`) | `server.test.ts`; `guide.test.ts` "keeps the review decisions people make out of every tool" |
 | In-process transports (API, remote MCP) call `packages/application`; out-of-process clients (CLI, local MCP, web) use `packages/client`; both implement `ProductPort` and `SchemaPort` | `pnpm typecheck` |
-| Every user call runs with the caller's own Supabase session; the secret key only for byte custody and worker calls | `knowledge-service.test.ts` "PostgrestKnowledgeDatabase" (caller's bearer); `apps/api/src/server.test.ts` |
+| Every user call runs with the caller's own Supabase session; the secret key only for byte custody, worker calls and the release read at startup | `knowledge-service.test.ts` "PostgrestKnowledgeDatabase" (caller's bearer; the release read); `apps/api/src/server.test.ts` |
+| The contract is pinned as a package (`vendor/`); the API and the remote MCP server start only on the database release it names, read from the package and never written in source; `AIENG_DB_RELEASE_CHECK` changes the mode ([release check](features/database-release-check.md)) | `database-release.test.ts` (the contract's shared cases); "database release check" in `apps/api/src/server.test.ts` and `apps/mcp/src/remote-host.test.ts` |
 | Errors are `{ code, message, detail? }` with `ProductErrorCode`; a read the deployment cannot answer is `NOT_AVAILABLE`, never empty | `operations.test.ts` "maps every error code"; `product-service.test.ts` "answers NOT_AVAILABLE" |
 | Local by default: scripts load only `.env.lab` (loopback lab); a remote needs `AIENG_DB_REMOTE_CONFIRM=<project ref>`; lab scripts refuse any remote | `config.test.ts`; `./dev status` `database_target` |
 | Database names are read only by `packages/application/src/config.ts`; every variable is registered | `config/env.registry.yaml`, [environment](docs/ENVIRONMENT.md) |

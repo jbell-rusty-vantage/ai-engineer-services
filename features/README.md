@@ -20,6 +20,7 @@ and HTTP routes, and the transport files say how each transport works.
 | [MCP server](mcp-server.md) | `apps/mcp`: stdio for a harness, streamable HTTP on port 3201 | `pnpm --filter @aiengineer/service-mcp test` |
 | [CLI](cli.md) | `aieng` (`apps/cli`) | `pnpm --filter @aiengineer/service-cli test` |
 | [Database target](database-target.md) | `.env.lab` by default; a remote only with `AIENG_DB_REMOTE_CONFIRM`; `./dev planes`, `./dev db` | `pnpm --filter @aiengineer/service-application exec vitest run src/config.test.ts` |
+| [Database release check](database-release-check.md) | `GET /health` (`databaseRelease`) on the API and the remote MCP server; `AIENG_DB_RELEASE_CHECK`; `./dev status` (`contract.pinned`) | `pnpm --filter @aiengineer/service-application exec vitest run src/database-release.test.ts` |
 | [Provenance](provenance.md) | `./dev trace show`, `check`, `build`; the commit-msg hook | `./dev trace check` |
 
 Across all of them, `./dev test surface` builds and runs the consumer scorecard without a database

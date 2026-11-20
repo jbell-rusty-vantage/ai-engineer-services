@@ -23,12 +23,15 @@
   `publishSite` and every MCP tool run unchanged on either.
 - `packages/contracts` holds the three catalogs every surface reads: operations (`operations.ts`), the agent-facing
   surface (`surface.ts`: jobs, MCP tools, CLI commands) and the guide (`guide/`).
+- **Database release:** the contract is pinned as a package (`vendor/`, `@aiengineer/database-contract`). The API and
+  the remote MCP server ask `api.database_release()` once when they start and refuse a release outside the pinned
+  contract's version ([database release check](../features/database-release-check.md)).
 
 ## HTTP API
 
 | Route | Purpose |
 | --- | --- |
-| `GET /health` | Liveness |
+| `GET /health` | Liveness and the database release found at startup: `{ status, databaseRelease: { mode, range, release, state, verdict, warning, checkedAt } }` (the remote MCP server answers the same) |
 | `GET /v1/guide`, `GET /v1/guide/<topic>` | The start page, one topic, or one skill page (`<skill>` or `<skill>/references/<name>`): `{ topic, title, text, topics }` |
 | `GET /v1/operations` | Public operation catalog (name, kind, scope, summary) |
 | `GET /v1/operations/:name` | One operation's input schema, output shape, example and schema pages (also accepts a tool name) |
@@ -180,6 +183,17 @@ JSON.
 | S-18 | The four authoring reads and the hand-off were added to existing tools (`inspect_authoring`, `request_review`), not as new tools; the database owns them as product operations (contract 0.9.0), and a revision answer carries the saved structure instead of naming what is missing |
 | S-19 | A Markdown schema page asked for with an anchor returns that entry (a table row with its header, or a section); the query catalog page outgrew the page cap at contract 0.7.0 |
 
+## Decisions (database release, 2026-11-20)
+
+VER-S1, decision D-117. Feature page: [database release check](../features/database-release-check.md).
+
+| ID | Decision |
+| --- | --- |
+| S-20 | The database contract is pinned as the package tarball under `vendor/`; the service's release range is the `version` in that package's `contract.version.json`, read at run time, never written in source |
+| S-21 | An in-process transport asks the database for its release in its `onReady` hook and never listens on a refused release; the CLI and the local MCP server do not touch the database and do not check |
+| S-22 | The release read uses the secret key as a worker call: no caller exists at startup, `anon` may not execute the function, and the answer holds no user data. User calls keep the caller's session |
+| S-23 | The release is reported on `GET /health` of both transports and in `./dev status`; no operation, MCP tool or CLI command was added |
+
 ## Authoring read-back and hand-over (database contract 0.9.0, 2026-11-16)
 
 Four product operations, dispatched in the database by `product.dispatch_authoring_read` and
@@ -215,4 +229,6 @@ block, withdrawing a request.
 - Hosting for platform-static sites, and the web app integration.
 - Knowledge Services and Mission Control clients.
 - Rate limits, request logging and metrics.
+- A live run of the database release check: it is unit-tested, and no transport has started against a database with
+  it (the lab's Supabase API was not running on 2026-11-20). No MCP tool or CLI command reports the release.
 - Deployment. Async jobs (long-running operations still run synchronously).

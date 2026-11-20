@@ -13,7 +13,12 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { createProductService } from "@aiengineer/service-application";
+import {
+  checkMode,
+  createDatabaseReleaseCheck,
+  createProductService,
+  type ServiceConfig,
+} from "@aiengineer/service-application";
 import { AiEngineerClient } from "@aiengineer/service-client";
 import { aiEngineerTools, buildRemoteMcpHost } from "@aiengineer/service-mcp";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -306,12 +311,17 @@ const lessonItem = offerView.items.find((item) => item.revisionId === lessonRevi
 record("API read returns the release item ids a client needs", Boolean(lessonItem));
 
 // ------------------------------------------------------------------ learner through the remote MCP server (no local files)
+// The host runs the startup release check of the entry points: the lab must be stamped with the pinned release
+// (or AIENG_DB_RELEASE_CHECK=warn for a lab that is not).
+const labConfig: ServiceConfig = {
+  databaseUrl: lab.databaseUrl,
+  databasePublishableKey: lab.publishableKey,
+  databaseSecretKey: lab.secretKey,
+  databaseReleaseCheck: checkMode(process.env),
+};
 const remoteHost = buildRemoteMcpHost({
-  service: createProductService({
-    databaseUrl: lab.databaseUrl,
-    databasePublishableKey: lab.publishableKey,
-    databaseSecretKey: lab.secretKey,
-  }),
+  service: createProductService(labConfig),
+  databaseRelease: createDatabaseReleaseCheck(labConfig),
 });
 await remoteHost.listen({ host: "127.0.0.1", port: 0 });
 const remoteUrl = `http://127.0.0.1:${(remoteHost.server.address() as AddressInfo).port}/mcp`;

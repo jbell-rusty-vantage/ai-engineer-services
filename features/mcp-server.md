@@ -6,7 +6,8 @@ for agents without a sandbox, which calls `packages/application` in process.
 
 - Code: `apps/mcp/src/server.ts` (registration), `apps/mcp/src/tools/*.ts`, `apps/mcp/src/stdio.ts`,
   `apps/mcp/src/remote.ts` and `remote-host.ts`.
-- Tests: `apps/mcp/src/server.test.ts` (tool set, protocol, every tool family).
+- Tests: `apps/mcp/src/server.test.ts` (tool set, protocol, every tool family); `apps/mcp/src/remote-host.test.ts`
+  (the remote host's database release check and `/health`).
 
 ## Reach it
 
@@ -22,3 +23,6 @@ Proven by: `pnpm --filter @aiengineer/service-mcp test`.
 - A new tool needs a real agent workflow and an entry in `packages/contracts/src/surface.ts`; the test fails on any
   tool the catalog does not list.
 - The remote server refuses local folder arguments.
+- The remote server checks the database's release when it starts and refuses any but the pinned one
+  (`AIENG_DB_RELEASE_REFUSED`); its `GET /health` reports the release. The stdio server never touches the database
+  and does not check ([database release check](database-release-check.md#where)).

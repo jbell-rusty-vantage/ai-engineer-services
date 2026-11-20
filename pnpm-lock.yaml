@@ -158,6 +158,9 @@ importers:
 
   packages/application:
     dependencies:
+      '@aiengineer/database-contract':
+        specifier: file:../../vendor/aiengineer-database-contract-0.12.0.tgz
+        version: file:vendor/aiengineer-database-contract-0.12.0.tgz
       '@aiengineer/service-contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -217,6 +220,11 @@ importers:
         version: 4.1.11(@types/node@26.4.0)(vite@8.3.5(@types/node@26.4.0)(esbuild@0.28.2)(tsx@4.23.13))
 
 packages:
+
+  '@aiengineer/database-contract@file:vendor/aiengineer-database-contract-0.12.0.tgz':
+    resolution: {integrity: sha512-srjeR1YBbdY1jEp2b8JS+Ujq3CSuHTPfMIVguw28bHz7PRdIFU5SKStoj9KnKa8Ujbc0dUeuan2Z96MEWhPkBg==, tarball: file:vendor/aiengineer-database-contract-0.12.0.tgz}
+    version: 0.12.0
+    engines: {node: '>=20'}
 
   '@biomejs/biome@2.5.14':
     resolution: {integrity: sha512-0FabLIjd4M/dm8VFI86RMaLLdgepzbdfiAL2R8cr7V81OYYrP1w7Z73KfAwPK5h9SrEBXTzNG2y+mBwPo9xRnw==}
@@ -1983,6 +1991,8 @@ packages:
     resolution: {integrity: sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA==}
 
 snapshots:
+
+  '@aiengineer/database-contract@file:vendor/aiengineer-database-contract-0.12.0.tgz': {}
 
   '@biomejs/biome@2.5.14':
     optionalDependencies:

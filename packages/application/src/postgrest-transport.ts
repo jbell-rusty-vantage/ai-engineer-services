@@ -63,17 +63,18 @@ export class PostgrestTransport {
     return headers;
   }
 
-  /** The service key; used for byte custody and worker calls only. */
+  /** The service key; used for byte custody, worker calls and the release read at startup only. */
   serviceHeaders(): Headers {
     return { apikey: this.config.databaseSecretKey, authorization: `Bearer ${this.config.databaseSecretKey}` };
   }
 
-  /** Calls a function with named arguments. */
-  rpc<T>(functionName: string, body: JsonObject, headers: Headers): Promise<T> {
+  /** Calls a function with named arguments; `signal` puts a time limit on the call (the release read at startup). */
+  rpc<T>(functionName: string, body: JsonObject, headers: Headers, signal?: AbortSignal): Promise<T> {
     return this.send<T>(`/rest/v1/rpc/${functionName}`, {
       method: "POST",
       headers: { ...headers, "content-type": "application/json", "content-profile": "api" },
       body: JSON.stringify(body),
+      ...(signal ? { signal } : {}),
     });
   }
 
@@ -85,7 +86,10 @@ export class PostgrestTransport {
     });
   }
 
-  private async send<T>(path: string, init: { method: string; headers: Headers; body?: string }): Promise<T> {
+  private async send<T>(
+    path: string,
+    init: { method: string; headers: Headers; body?: string; signal?: AbortSignal },
+  ): Promise<T> {
     let response: Response;
     try {
       response = await this.fetchImpl(`${this.config.databaseUrl}${path}`, init);

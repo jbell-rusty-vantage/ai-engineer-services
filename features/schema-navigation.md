@@ -24,4 +24,6 @@ Proven by: `pnpm --filter @aiengineer/service-application exec vitest run src/sc
 - The directory is `AIENG_SCHEMA_WORKSPACE_DIR`, else the sibling `../ai-engineer-db-contract/workspace`; with neither,
   every call answers `NOT_AVAILABLE`. `./dev status` shows which workspace and contract version it would read.
 - Every answer carries the workspace head (migration head, contract version, fingerprint); when it is older than the
-  database being asked about, say so. The service pins no contract version (`./dev status`, `contract.pinned`).
+  database being asked about, say so. The service pins a contract version and starts only on a database of that
+  release ([database release check](database-release-check.md#pin)), but schema navigation still reads the directory
+  above, not the pinned package's copy of the workspace: compare the head with `contract.pinned` in `./dev status`.

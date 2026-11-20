@@ -1,11 +1,18 @@
 import type {
   CommandCall,
   DatabaseGateway,
+  DatabaseReleaseCheck,
+  DatabaseReleaseCheckMode,
   KnowledgeReader,
   ObjectStorage,
   ReadCall,
 } from "@aiengineer/service-application";
-import { ProductService } from "@aiengineer/service-application";
+import {
+  checkDatabaseRelease,
+  DatabaseReleaseRefused,
+  databaseReleaseFormat,
+  ProductService,
+} from "@aiengineer/service-application";
 import {
   type JsonObject,
   knowledgeOperations,
@@ -36,12 +43,34 @@ class EchoDatabase implements DatabaseGateway {
   async worker(): Promise<JsonObject> {
     return { state: "available" };
   }
+  /** What the database states about its release; the default is inside the fixture range. */
+  release: unknown = stated("1.5.0", "current");
+  releaseAsked = 0;
+  async databaseRelease(): Promise<unknown> {
+    this.releaseAsked += 1;
+    return this.release;
+  }
+}
+
+function stated(release: string | null, state: string) {
+  return { format: databaseReleaseFormat, release, state };
 }
 
 const storage: ObjectStorage = { put: async () => undefined, get: async () => new Uint8Array() };
 
-function api(database = new EchoDatabase()) {
-  return { database, app: buildApiServer({ service: new ProductService(database, storage) }) };
+/** A fixture range; the range the service really states (the pinned contract) is tested in packages/application. */
+const releaseRange = ">=1.2.0 <2.0.0";
+const checkedAt = "2026-11-20T00:00:00.000Z";
+
+/** The startup check as the entry point composes it, against the test database. */
+function releaseCheck(database: EchoDatabase, mode: DatabaseReleaseCheckMode = "enforce"): DatabaseReleaseCheck {
+  return () =>
+    checkDatabaseRelease(database, { mode, range: releaseRange, log: false, now: () => new Date(checkedAt) });
+}
+
+function api(database = new EchoDatabase(), mode: DatabaseReleaseCheckMode = "enforce") {
+  const service = new ProductService(database, storage);
+  return { database, app: buildApiServer({ service, databaseRelease: releaseCheck(database, mode) }) };
 }
 
 const head = { migration_head: "20261115120100", contract_version: "0.6.0", fingerprint: "sha256:fixture" };
@@ -121,6 +150,84 @@ describe("API server", () => {
   });
 });
 
+describe("database release check", () => {
+  const health = { method: "GET", url: "/health" } as const;
+
+  it("asks the database once when the server starts and reports its release on /health, without a session", async () => {
+    const { app, database } = api();
+    const response = await app.inject(health);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      status: "ok",
+      databaseRelease: {
+        mode: "enforce",
+        range: releaseRange,
+        release: "1.5.0",
+        state: "current",
+        verdict: "ok",
+        warning: false,
+        checkedAt,
+      },
+    });
+    await app.inject(health);
+    expect(database.releaseAsked).toBe(1);
+  });
+
+  it("refuses to start on a release outside its range, with one error, and never listens", async () => {
+    const database = new EchoDatabase();
+    database.release = stated("1.1.9", "current");
+    const { app } = api(database);
+    const refusal = await app.listen({ host: "127.0.0.1", port: 0 }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(refusal).toBeInstanceOf(DatabaseReleaseRefused);
+    expect((refusal as DatabaseReleaseRefused).message).toContain(
+      "Database release: 1.1.9; state: current; this service works with: >=1.2.0 <2.0.0. AIENG_DB_RELEASE_CHECK=warn",
+    );
+    expect(app.server.listening).toBe(false);
+    await app.close();
+  });
+
+  it("refuses a database that states no release, was never stamped or is behind its stamp", async () => {
+    for (const [release, verdict] of [
+      [null, "unknown"],
+      [stated(null, "unstamped"), "unstamped"],
+      [stated("1.5.0", "inconsistent"), "inconsistent"],
+    ] as const) {
+      const database = new EchoDatabase();
+      database.release = release;
+      await expect(api(database).app.ready()).rejects.toMatchObject({
+        code: "AIENG_DB_RELEASE_REFUSED",
+        report: { verdict },
+      });
+    }
+  });
+
+  it("starts with a warning when migrations were applied after the stamp", async () => {
+    const database = new EchoDatabase();
+    database.release = stated("1.5.0", "ahead");
+    const response = await api(database).app.inject(health);
+    expect(response.json().databaseRelease).toMatchObject({ verdict: "ok", warning: true, state: "ahead" });
+  });
+
+  it("starts in warn mode on a release outside its range and says so", async () => {
+    const database = new EchoDatabase();
+    database.release = stated("1.1.9", "current");
+    const response = await api(database, "warn").app.inject(health);
+    expect(response.statusCode).toBe(200);
+    expect(response.json().databaseRelease).toMatchObject({ mode: "warn", verdict: "incompatible", release: "1.1.9" });
+    expect(response.json().databaseRelease).not.toHaveProperty("reason");
+  });
+
+  it("does not ask the database in off mode", async () => {
+    const { app, database } = api(new EchoDatabase(), "off");
+    const response = await app.inject(health);
+    expect(response.json().databaseRelease).toMatchObject({ mode: "off", verdict: "not_checked", release: null });
+    expect(database.releaseAsked).toBe(0);
+  });
+});
+
 describe("reference routes", () => {
   it("serves the guide start page and topics without a session", async () => {
     const { app } = api();
@@ -168,7 +275,12 @@ describe("reference routes", () => {
 
   it("searches the schema and reads pages through the schema port", async () => {
     const schema = new RecordingSchema();
-    const app = buildApiServer({ service: new ProductService(new EchoDatabase(), storage), schema });
+    const database = new EchoDatabase();
+    const app = buildApiServer({
+      service: new ProductService(database, storage),
+      schema,
+      databaseRelease: releaseCheck(database),
+    });
     const search = await app.inject({
       method: "GET",
       url: "/v1/schema/search?query=verified%20claims&limit=3&kind=view",
@@ -209,7 +321,10 @@ describe("knowledge reads", () => {
       },
     };
     const database = new EchoDatabase();
-    const app = buildApiServer({ service: new ProductService(database, storage, knowledge) });
+    const app = buildApiServer({
+      service: new ProductService(database, storage, knowledge),
+      databaseRelease: releaseCheck(database),
+    });
     const response = await app.inject({
       method: "POST",
       url: "/v1/reads/search_knowledge",
@@ -259,7 +374,10 @@ describe("knowledge reads", () => {
       },
     };
     const database = new EchoDatabase();
-    const app = buildApiServer({ service: new ProductService(database, storage, knowledge) });
+    const app = buildApiServer({
+      service: new ProductService(database, storage, knowledge),
+      databaseRelease: releaseCheck(database),
+    });
     const due = (token?: string) =>
       app.inject({
         method: "POST",

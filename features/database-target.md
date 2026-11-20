@@ -24,6 +24,8 @@ Proven by: `pnpm --filter @aiengineer/service-application exec vitest run src/co
 ## Gotchas
 
 - The remote `aieng-db` has no product schema today, so a remote start answers nothing useful.
+- Reaching a database is not enough to start on it: the API and the remote MCP server also check its release and
+  refuse any but the pinned one ([database release check](database-release-check.md)).
 - The repository `.env` still holds the remote values; nothing loads it by default. Moving remote credentials out of
   repository `.env` files is the workspace-wide step of DATA-ACCESS §5.2, not done here.
 - `aieng-graph` (`4773dc72`) is retired: `./dev planes` and `./dev db` refuse it.

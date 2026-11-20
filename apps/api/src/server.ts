@@ -1,4 +1,10 @@
-import type { CallerSession, ProductService } from "@aiengineer/service-application";
+import {
+  type CallerSession,
+  type DatabaseReleaseCheck,
+  type DatabaseReleaseStatus,
+  databaseReleaseStatus,
+  type ProductService,
+} from "@aiengineer/service-application";
 import {
   assetUploadMetadata,
   commandRequest,
@@ -18,6 +24,11 @@ export interface ApiServerOptions {
   readonly service: ProductService;
   /** Schema navigation over the generated schema workspace; without it the schema routes answer `NOT_AVAILABLE`. */
   readonly schema?: SchemaPort;
+  /**
+   * The database release check (`createDatabaseReleaseCheck`). It runs once when the server starts, before any request
+   * is served; a rejection (enforce mode on a release outside the service's range) stops the start.
+   */
+  readonly databaseRelease: DatabaseReleaseCheck;
 }
 
 function callerSession(request: FastifyRequest): CallerSession {
@@ -85,7 +96,13 @@ export function buildApiServer(options: ApiServerOptions): FastifyInstance {
     return reply.status(500).send(new ProductError("INTERNAL_ERROR").toBody());
   });
 
-  app.get("/health", async () => ({ status: "ok" }));
+  // The database is asked for its release once, when the server starts; a refused release never listens.
+  let databaseRelease: DatabaseReleaseStatus | undefined;
+  app.addHook("onReady", async () => {
+    databaseRelease = databaseReleaseStatus(await options.databaseRelease());
+  });
+
+  app.get("/health", async () => ({ status: "ok", databaseRelease }));
 
   // Reference routes: the guide, the catalog and schema navigation. They read no user data and need no session.
   app.get("/v1/guide", async () => renderGuide());

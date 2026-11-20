@@ -18,7 +18,9 @@ concurrency:
 jobs:
   # The gate: exactly what `./dev check` runs (pnpm typecheck, pnpm test, pnpm lint, planes.py planes check, and a
   # warn-only provenance check of the last commit). Schema navigation tests use fixtures; the sibling
-  # ai-engineer-db-contract checkout is absent here on purpose.
+  # ai-engineer-db-contract checkout is absent here on purpose. The pinned contract package comes from the tarball
+  # tracked under vendor/ (pnpm install verifies its integrity against the lockfile); the database release check's
+  # tests read their shared cases and the service's range from that package.
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 15

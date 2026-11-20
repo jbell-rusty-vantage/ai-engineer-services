@@ -4,3 +4,5 @@ scripts/dev/hooks/* text eol=lf
 *.py text eol=lf
 *.toml text eol=lf
 *.yml text eol=lf
+# The pinned database contract package: bytes exactly as packed (its integrity is in pnpm-lock.yaml).
+vendor/*.tgz binary
